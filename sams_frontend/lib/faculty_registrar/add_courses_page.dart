@@ -84,7 +84,7 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
     setState(() => _isSaving = true);
     try {
       final res = await http.post(
-        Uri.parse('http://127.0.0.1:8000/api/subjects'),
+        Uri.parse('http://10.0.2.2:8000/api/subjects'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

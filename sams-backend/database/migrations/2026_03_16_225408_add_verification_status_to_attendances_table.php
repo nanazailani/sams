@@ -12,7 +12,9 @@ return new class extends Migration
     public function up()
     {
         Schema::table('attendances', function (Blueprint $table) {
-            $table->string('verification_status')->default('Pending');
+            if (!Schema::hasColumn('attendances', 'verification_status')) {
+                $table->string('verification_status')->default('Pending');
+            }
         });
     }
 

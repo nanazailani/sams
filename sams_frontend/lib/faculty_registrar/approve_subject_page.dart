@@ -13,7 +13,7 @@ class ApproveSubjectPage extends StatefulWidget {
 class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
-  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
 
   final TextEditingController _searchController = TextEditingController();
 

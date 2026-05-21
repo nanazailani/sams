@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:sams_frontend/lecturer/attendance.dart';
+import 'package:sams_frontend/attendance/lecturer/attendance.dart';
+import 'package:sams_frontend/main.dart' show LoginPage;
 
 class ClassPage extends StatefulWidget {
   const ClassPage({super.key});
@@ -24,6 +25,17 @@ class _ClassPageState extends State<ClassPage> {
   void initState() {
     super.initState();
     loadSessionAndFetch();
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const LoginPage()),
+      (route) => false,
+    );
   }
 
   Future<void> loadSessionAndFetch() async {
@@ -58,6 +70,7 @@ class _ClassPageState extends State<ClassPage> {
     try {
       final response = await http
           .get(
+            //Uri.parse('http://127.0.0.1:8000/api/lecturer/$lecturerId/classes'),
             Uri.parse('http://10.0.2.2:8000/api/lecturer/$lecturerId/classes'),
           )
           .timeout(const Duration(seconds: 10));
@@ -300,7 +313,6 @@ class _ClassPageState extends State<ClassPage> {
 
   String _formatDisplayDate(String rawDate) {
     if (rawDate.isEmpty || rawDate == '-') return '-';
-
     try {
       final date = DateTime.parse(rawDate);
       const months = [
@@ -315,11 +327,9 @@ class _ClassPageState extends State<ClassPage> {
 
   String _formatTimeValue(String rawTime) {
     if (rawTime.isEmpty || rawTime == '-') return '-';
-
     try {
       final parts = rawTime.split(':');
       if (parts.length < 2) return rawTime;
-
       final hour = int.tryParse(parts[0]) ?? 0;
       final minute = int.tryParse(parts[1]) ?? 0;
       final suffix = hour >= 12 ? 'PM' : 'AM';
@@ -338,15 +348,10 @@ class _ClassPageState extends State<ClassPage> {
   String _buildSessionLabel(Map<String, String> session) {
     final rawType = (session['session_type'] ?? '').trim();
     final rawWeek = (session['week_number'] ?? '').trim();
-
     final sessionType = rawType.isEmpty
         ? (session['attendance_type'] == 'module' ? 'Module Session' : 'Session')
         : '${rawType[0].toUpperCase()}${rawType.substring(1).toLowerCase()} Session';
-
-    if (rawWeek.isEmpty) {
-      return sessionType;
-    }
-
+    if (rawWeek.isEmpty) return sessionType;
     return '$sessionType • Week $rawWeek';
   }
 
@@ -359,19 +364,31 @@ class _ClassPageState extends State<ClassPage> {
       body: SafeArea(
         child: Column(
           children: [
+            // ── Header with logout ──
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
               decoration: const BoxDecoration(
                 color: Color(0xFF2E4E96),
               ),
-              child: const Text(
-                'Course and Module List',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Course and Module List',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _logout,
+                    icon: const Icon(Icons.logout, color: Colors.white, size: 28),
+                    tooltip: 'Logout',
+                  ),
+                ],
               ),
             ),
             Expanded(

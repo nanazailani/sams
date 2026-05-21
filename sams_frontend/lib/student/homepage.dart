@@ -24,7 +24,7 @@ class _StudentHomepageState extends State<StudentHomepage> {
   static const _primaryColor = Color(0xFF35C8C6);
   static const _backgroundColor = Color(0xFFF3F1F2);
   static const _semester = 'SEMESTER II ACADEMIC SESSION 2025/2026';
-  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
 
   final TextEditingController _searchController = TextEditingController();
 

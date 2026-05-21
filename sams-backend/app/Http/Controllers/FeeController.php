@@ -6,7 +6,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 
 class FeeController extends Controller
 {
@@ -42,6 +41,54 @@ class FeeController extends Controller
     }
 
     /**
+     * Get student basic record with joined user info.
+     */
+    private function getStudentRecord(int $studentId)
+    {
+        return DB::table('students')
+            ->join('users', 'students.user_id', '=', 'users.id')
+            ->where('students.id', $studentId)
+            ->select(
+                'students.id',
+                'students.user_id',
+                'students.matric_no',
+                'students.programme',
+                'students.year',
+                'students.hostel',
+                'users.name'
+            )
+            ->first();
+    }
+
+    /**
+     * Get tuition fee config by programme.
+     */
+    private function getFeeConfigForStudent($student)
+    {
+        if (!$student || empty($student->programme)) {
+            return null;
+        }
+
+        return DB::table('tuition_fees')
+            ->where('programme', $student->programme)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Calculate total amount based on hostel status.
+     */
+    private function calculateTotalAmount($student, $fee): float
+    {
+        $tuitionFee = (float) ($fee->tuition_fee ?? 0);
+        $hostelFee = (float) ($fee->hostel_fee ?? 0);
+
+        $isHostel = (int) ($student->hostel ?? 0) === 1;
+
+        return $isHostel ? ($tuitionFee + $hostelFee) : $tuitionFee;
+    }
+
+    /**
      * Student dashboard
      * Tuition Fee Management page
      */
@@ -55,27 +102,23 @@ class FeeController extends Controller
             ], 404);
         }
 
-        $student = DB::table('students')
-            ->join('users', 'students.user_id', '=', 'users.id')
-            ->where('students.id', $studentId)
-            ->select(
-                'students.id',
-                'students.matric_no',
-                'students.programme',
-                'users.name'
-            )
-            ->first();
+        $student = $this->getStudentRecord($studentId);
 
-        $fee = DB::table('tuition_fees')
-            ->where('student_id', $studentId)
-            ->orderByDesc('id')
-            ->first();
+        if (!$student) {
+            return response()->json([
+                'message' => 'Student not found'
+            ], 404);
+        }
+
+        $fee = $this->getFeeConfigForStudent($student);
 
         if (!$fee) {
             return response()->json([
-                'message' => 'No tuition fee record found'
+                'message' => 'No tuition fee configuration found for this programme'
             ], 404);
         }
+
+        $totalAmount = $this->calculateTotalAmount($student, $fee);
 
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
@@ -89,9 +132,9 @@ class FeeController extends Controller
             ->where('status', 'Pending')
             ->sum('amount');
 
-        $remaining = max(($fee->total_amount ?? 0) - $approvedPaid, 0);
-        $completion = ($fee->total_amount ?? 0) > 0
-            ? round(($approvedPaid / $fee->total_amount) * 100)
+        $remaining = max($totalAmount - $approvedPaid, 0);
+        $completion = $totalAmount > 0
+            ? round(($approvedPaid / $totalAmount) * 100)
             : 0;
 
         $overallStatus = $remaining <= 0
@@ -103,7 +146,7 @@ class FeeController extends Controller
             'matric_no' => $student->matric_no ?? '-',
             'programme' => $student->programme ?? '-',
             'semester' => ($fee->semester ?? '-') . ', ' . ($fee->session ?? '-'),
-            'total_fee' => (float) ($fee->total_amount ?? 0),
+            'total_fee' => (float) $totalAmount,
             'amount_paid' => (float) $approvedPaid,
             'pending_amount' => (float) $pendingPaid,
             'remaining_balance' => (float) $remaining,
@@ -112,6 +155,7 @@ class FeeController extends Controller
                 : '-',
             'completion_percentage' => $completion,
             'status' => $overallStatus,
+            'hostel' => (int) ($student->hostel ?? 0),
         ]);
     }
 
@@ -128,27 +172,23 @@ class FeeController extends Controller
             ], 404);
         }
 
-        $student = DB::table('students')
-            ->join('users', 'students.user_id', '=', 'users.id')
-            ->where('students.id', $studentId)
-            ->select(
-                'students.id',
-                'students.matric_no',
-                'students.programme',
-                'users.name'
-            )
-            ->first();
+        $student = $this->getStudentRecord($studentId);
 
-        $fee = DB::table('tuition_fees')
-            ->where('student_id', $studentId)
-            ->orderByDesc('id')
-            ->first();
+        if (!$student) {
+            return response()->json([
+                'message' => 'Student not found'
+            ], 404);
+        }
+
+        $fee = $this->getFeeConfigForStudent($student);
 
         if (!$fee) {
             return response()->json([
-                'message' => 'No tuition fee record found'
+                'message' => 'No tuition fee configuration found for this programme'
             ], 404);
         }
+
+        $totalAmount = $this->calculateTotalAmount($student, $fee);
 
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
@@ -156,14 +196,18 @@ class FeeController extends Controller
             ->where('status', 'Approved')
             ->sum('amount');
 
-        $remaining = max(($fee->total_amount ?? 0) - $approvedPaid, 0);
-        $completion = ($fee->total_amount ?? 0) > 0
-            ? round(($approvedPaid / $fee->total_amount) * 100)
+        $remaining = max($totalAmount - $approvedPaid, 0);
+        $completion = $totalAmount > 0
+            ? round(($approvedPaid / $totalAmount) * 100)
             : 0;
 
         $status = $remaining <= 0
             ? 'Paid'
             : ($approvedPaid > 0 ? 'Partial' : 'Unpaid');
+
+        $hostelFeeApplied = ((int) ($student->hostel ?? 0) === 1)
+            ? (float) ($fee->hostel_fee ?? 0)
+            : 0.0;
 
         return response()->json([
             'student_name' => $student->name ?? '-',
@@ -172,8 +216,8 @@ class FeeController extends Controller
             'semester' => $fee->semester ?? '-',
             'session' => $fee->session ?? '-',
             'tuition_fee' => (float) ($fee->tuition_fee ?? 0),
-            'hostel_fee' => (float) ($fee->hostel_fee ?? 0),
-            'total_fee' => (float) ($fee->total_amount ?? 0),
+            'hostel_fee' => $hostelFeeApplied,
+            'total_fee' => (float) $totalAmount,
             'paid' => (float) $approvedPaid,
             'outstanding' => (float) $remaining,
             'completion_percentage' => $completion,
@@ -181,6 +225,7 @@ class FeeController extends Controller
             'deadline' => !empty($fee->deadline)
                 ? Carbon::parse($fee->deadline)->format('j F Y')
                 : '-',
+            'hostel' => (int) ($student->hostel ?? 0),
         ]);
     }
 
@@ -204,16 +249,23 @@ class FeeController extends Controller
             ], 404);
         }
 
-        $fee = DB::table('tuition_fees')
-            ->where('student_id', $studentId)
-            ->orderByDesc('id')
-            ->first();
+        $student = $this->getStudentRecord($studentId);
+
+        if (!$student) {
+            return response()->json([
+                'message' => 'Student not found'
+            ], 404);
+        }
+
+        $fee = $this->getFeeConfigForStudent($student);
 
         if (!$fee) {
             return response()->json([
-                'message' => 'No tuition fee record found'
+                'message' => 'No tuition fee configuration found for this programme'
             ], 404);
         }
+
+        $totalAmount = $this->calculateTotalAmount($student, $fee);
 
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
@@ -221,7 +273,7 @@ class FeeController extends Controller
             ->where('status', 'Approved')
             ->sum('amount');
 
-        $remaining = max(($fee->total_amount ?? 0) - $approvedPaid, 0);
+        $remaining = max($totalAmount - $approvedPaid, 0);
 
         if ($request->amount > $remaining) {
             return response()->json([
@@ -250,6 +302,10 @@ class FeeController extends Controller
             $insertData['submitted_at'] = now();
         }
 
+        if (Schema::hasColumn('payments', 'remarks') && $request->filled('remarks')) {
+            $insertData['remarks'] = $request->remarks;
+        }
+
         DB::table('payments')->insert($insertData);
 
         return response()->json([
@@ -273,16 +329,23 @@ class FeeController extends Controller
             ], 404);
         }
 
-        $fee = DB::table('tuition_fees')
-            ->where('student_id', $studentId)
-            ->orderByDesc('id')
-            ->first();
+        $student = $this->getStudentRecord($studentId);
+
+        if (!$student) {
+            return response()->json([
+                'message' => 'Student not found'
+            ], 404);
+        }
+
+        $fee = $this->getFeeConfigForStudent($student);
 
         if (!$fee) {
             return response()->json([
-                'message' => 'No tuition fee record found'
+                'message' => 'No tuition fee configuration found for this programme'
             ], 404);
         }
+
+        $totalAmount = $this->calculateTotalAmount($student, $fee);
 
         $summary = [
             'total_paid' => DB::table('payments')
@@ -307,7 +370,7 @@ class FeeController extends Controller
                 ->count(),
         ];
 
-        $summary['outstanding'] = max(($fee->total_amount ?? 0) - $summary['total_paid'], 0);
+        $summary['outstanding'] = max($totalAmount - $summary['total_paid'], 0);
 
         $payments = DB::table('payments')
             ->where('student_id', $studentId)
@@ -336,15 +399,84 @@ class FeeController extends Controller
     }
 
     /**
-     * Treasurer pending payment list
+     * Build common treasurer query.
+     */
+    private function treasurerBaseQuery()
+    {
+        return DB::table('payments')
+            ->join('students', 'payments.student_id', '=', 'students.id')
+            ->join('users', 'students.user_id', '=', 'users.id')
+            ->leftJoin('tuition_fees', 'payments.tuition_fee_id', '=', 'tuition_fees.id');
+    }
+
+    /**
+     * Apply common treasurer filters.
+     */
+    private function applyTreasurerFilters($query, Request $request)
+    {
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+
+            $query->where(function ($q) use ($search) {
+                $q->where('students.matric_no', 'like', '%' . $search . '%')
+                    ->orWhere('users.name', 'like', '%' . $search . '%')
+                    ->orWhereDate('payments.submitted_at', $search);
+            });
+        }
+
+        if ($request->filled('course') && strtolower($request->course) !== 'all') {
+            $query->where('students.programme', $request->course);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Build public receipt URL.
+     */
+    private function buildReceiptUrl(?string $receiptPath): ?string
+    {
+        if (!$receiptPath) {
+            return null;
+        }
+
+        return url('storage/' . $receiptPath);
+    }
+
+    /**
+     * Treasurer pending payment list / dashboard
      */
     public function getPendingPayments(Request $request)
     {
-        $query = DB::table('payments')
-            ->join('students', 'payments.student_id', '=', 'students.id')
-            ->join('users', 'students.user_id', '=', 'users.id')
-            ->leftJoin('tuition_fees', 'payments.tuition_fee_id', '=', 'tuition_fees.id')
-            ->where('payments.status', 'Pending')
+        $status = $request->get('status', 'Pending');
+
+        $summaryBase = $this->applyTreasurerFilters(
+            $this->treasurerBaseQuery(),
+            $request
+        );
+
+        $summary = [
+            'pending_count' => (clone $summaryBase)
+                ->where('payments.status', 'Pending')
+                ->count(),
+            'approved_count' => (clone $summaryBase)
+                ->where('payments.status', 'Approved')
+                ->count(),
+            'rejected_count' => (clone $summaryBase)
+                ->where('payments.status', 'Rejected')
+                ->count(),
+        ];
+
+        $recordsBase = $this->applyTreasurerFilters(
+            $this->treasurerBaseQuery(),
+            $request
+        );
+
+        if (!empty($status) && strtolower($status) !== 'all') {
+            $recordsBase->where('payments.status', $status);
+        }
+
+        $records = $recordsBase
             ->select(
                 'payments.id',
                 'payments.amount',
@@ -356,29 +488,15 @@ class FeeController extends Controller
                 'students.programme',
                 'tuition_fees.semester',
                 'tuition_fees.session'
-            );
+            )
+            ->orderByDesc('payments.submitted_at')
+            ->orderByDesc('payments.id')
+            ->paginate(5);
 
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('students.matric_no', 'like', '%' . $search . '%')
-                    ->orWhere('users.name', 'like', '%' . $search . '%');
-            });
-        }
-
-        if ($request->filled('course')) {
-            $query->where('students.programme', $request->course);
-        }
-
-        if ($request->filled('status')) {
-            $query->where('payments.status', $request->status);
-        }
-
-        $records = $query
-            ->orderBy('payments.submitted_at')
-            ->paginate(10);
-
-        return response()->json($records);
+        return response()->json([
+            'summary' => $summary,
+            'records' => $records,
+        ]);
     }
 
     /**
@@ -398,6 +516,7 @@ class FeeController extends Controller
                 'payments.status',
                 'payments.receipt_path',
                 'payments.submitted_at',
+                'payments.created_at',
                 'payments.remarks',
                 'students.id as student_id',
                 'students.matric_no',
@@ -426,8 +545,11 @@ class FeeController extends Controller
             'status' => $payment->status ?? '-',
             'date_submitted' => !empty($payment->submitted_at)
                 ? Carbon::parse($payment->submitted_at)->format('j M Y')
-                : '-',
+                : (!empty($payment->created_at)
+                    ? Carbon::parse($payment->created_at)->format('j M Y')
+                    : '-'),
             'receipt_path' => $payment->receipt_path ?? null,
+            'receipt_url' => $this->buildReceiptUrl($payment->receipt_path ?? null),
             'remarks' => $payment->remarks ?? null,
         ]);
     }
@@ -528,9 +650,39 @@ class FeeController extends Controller
      */
     public function getPaymentRecords(Request $request)
     {
-        $query = DB::table('payments')
-            ->join('students', 'payments.student_id', '=', 'students.id')
-            ->join('users', 'students.user_id', '=', 'users.id')
+        $status = $request->get('status', 'All');
+
+        $summaryBase = $this->applyTreasurerFilters(
+            $this->treasurerBaseQuery(),
+            $request
+        );
+
+        $summary = [
+            'total_records' => (clone $summaryBase)->count(),
+            'total_collected' => (clone $summaryBase)
+                ->where('payments.status', 'Approved')
+                ->sum('payments.amount'),
+            'approved_count' => (clone $summaryBase)
+                ->where('payments.status', 'Approved')
+                ->count(),
+            'rejected_count' => (clone $summaryBase)
+                ->where('payments.status', 'Rejected')
+                ->count(),
+            'pending_count' => (clone $summaryBase)
+                ->where('payments.status', 'Pending')
+                ->count(),
+        ];
+
+        $recordsBase = $this->applyTreasurerFilters(
+            $this->treasurerBaseQuery(),
+            $request
+        );
+
+        if (!empty($status) && strtolower($status) !== 'all') {
+            $recordsBase->where('payments.status', $status);
+        }
+
+        $records = $recordsBase
             ->select(
                 'payments.id',
                 'payments.amount',
@@ -539,25 +691,14 @@ class FeeController extends Controller
                 'payments.submitted_at',
                 'students.matric_no',
                 'users.name'
-            );
-
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('students.matric_no', 'like', '%' . $search . '%')
-                    ->orWhereDate('payments.submitted_at', $search);
-            });
-        }
-
-        if ($request->filled('status')) {
-            $query->where('payments.status', $request->status);
-        }
-
-        $records = $query
+            )
             ->orderByDesc('payments.submitted_at')
             ->orderByDesc('payments.id')
-            ->paginate(10);
+            ->paginate(5);
 
-        return response()->json($records);
+        return response()->json([
+            'summary' => $summary,
+            'records' => $records,
+        ]);
     }
 }

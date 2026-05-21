@@ -54,7 +54,8 @@ class _AvailableClassesPageState extends State<AvailableClassesPage> {
   Future<void> fetchSchedules() async {
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/modules/${widget.module.id}/schedules'),
+        //Uri.parse('http://:127.0.0.1:8000/api/modules/${widget.module.id}/schedules'),
+        Uri.parse('http://:10.0.2.2:8000/api/modules/${widget.module.id}/schedules'),
       );
 
       if (response.statusCode == 200) {
@@ -89,6 +90,7 @@ class _AvailableClassesPageState extends State<AvailableClassesPage> {
       }
 
       final response = await http.post(
+        //Uri.parse('http://127.0.0.1:8000/api/modules/book'),
         Uri.parse('http://10.0.2.2:8000/api/modules/book'),
         headers: {
           'Content-Type': 'application/json',

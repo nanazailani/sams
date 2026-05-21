@@ -6,10 +6,12 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up(): void
+    public function up()
     {
         Schema::table('class_sessions', function (Blueprint $table) {
-            $table->unsignedInteger('week_number')->nullable()->after('subject_id');
+            if (!Schema::hasColumn('class_sessions', 'week_number')) {
+                $table->unsignedInteger('week_number')->nullable()->after('subject_id');
+            }
         });
     }
 

@@ -128,6 +128,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         final response = await http
             .get(
               Uri.parse(
+                //'http://127.0.0.1:8000/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
                 'http://10.0.2.2:8000/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
               ),
             )
@@ -304,6 +305,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       }
 
       final response = await http.post(
+        //Uri.parse('http://127.0.0.1:8000/api/attendance/submit'),
         Uri.parse('http://10.0.2.2:8000/api/attendance/submit'),
         headers: {
           'Content-Type': 'application/json',

@@ -9,10 +9,12 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
+    public function up()
     {
         Schema::table('class_sessions', function (Blueprint $table) {
-            $table->string('session_type')->default('Lecture');
+            if (!Schema::hasColumn('class_sessions', 'session_type')) {
+                $table->string('session_type')->default('Lecture');
+            }
         });
     }
 

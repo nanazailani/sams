@@ -8,27 +8,28 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('lab_section', function (Blueprint $table) {
-            $table->id();
-            $table->string('section_name', 50);
-            $table->unsignedBigInteger('subject_id');
-            $table->unsignedBigInteger('lecturer_id')->nullable();
-            $table->string('room', 50)->nullable();
-            $table->integer('capacity')->default(0);
+        if (!Schema::hasTable('lab_section')) {
+            Schema::create('lab_section', function (Blueprint $table) {
+                $table->id();
+                $table->string('section_name', 50);
+                $table->unsignedBigInteger('subject_id');
+                $table->unsignedBigInteger('lecturer_id')->nullable();
+                $table->string('room', 50)->nullable();
+                $table->integer('capacity')->default(0);
 
-            // Foreign keys
-            $table->foreign('subject_id')
-                  ->references('id')
-                  ->on('subjects')
-                  ->onDelete('cascade');
+                // Foreign keys
+                $table->foreign('subject_id')
+                    ->references('id')
+                    ->on('subjects')
+                    ->onDelete('cascade');
 
-            $table->foreign('lecturer_id')
-                  ->references('id')
-                  ->on('users')
-                  ->onDelete('set null');
-        });
+                $table->foreign('lecturer_id')
+                    ->references('id')
+                    ->on('users')
+                    ->onDelete('set null');
+            });
+        }
     }
-
     public function down(): void
     {
         Schema::dropIfExists('lab_section');

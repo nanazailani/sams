@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sams_frontend/student/attendance.dart';
-import 'package:sams_frontend/student/view_course.dart';
+import 'package:sams_frontend/attendance/student/attendance.dart';
+import 'package:sams_frontend/attendance/student/view_course.dart';
 
 class StudentClassPage extends StatefulWidget {
   const StudentClassPage({super.key});
@@ -14,10 +14,7 @@ class StudentClassPage extends StatefulWidget {
 }
 
 class _StudentClassPageState extends State<StudentClassPage> {
-  // loaded from saved login session
   int studentId = 0;
-
-  // These will be loaded from Laravel API
   List<Map<String, dynamic>> bookedCourses = [];
   List<Map<String, dynamic>> bookedModules = [];
   bool isLoading = true;
@@ -30,32 +27,27 @@ class _StudentClassPageState extends State<StudentClassPage> {
 
   Future<void> loadSessionAndFetch() async {
     final prefs = await SharedPreferences.getInstance();
-
     final savedStudentId = prefs.getInt('student_id');
     final savedUserId = prefs.getInt('user_id');
 
-    int resolvedStudentId = savedStudentId ?? 0;
-    if (resolvedStudentId == 0 && savedUserId != null) {
-      resolvedStudentId = savedUserId;
-    }
+    int resolvedStudentId = savedStudentId ?? savedUserId ?? 0;
 
-    if (mounted) {
-      setState(() {
-        studentId = resolvedStudentId;
-      });
-    }
+    setState(() {
+      studentId = resolvedStudentId;
+    });
 
-    debugPrint('StudentClassPage loaded studentId: $studentId');
-
-    await fetchRegisteredSubjects();
+    debugPrint('StudentClassPage loaded studentId: $resolvedStudentId');
+    await fetchRegisteredSubjectsWithId(resolvedStudentId);
   }
 
   Future<void> fetchRegisteredSubjects() async {
-    setState(() {
-      isLoading = true;
-    });
+    await fetchRegisteredSubjectsWithId(studentId);
+  }
 
-    if (studentId == 0) {
+  Future<void> fetchRegisteredSubjectsWithId(int id) async {
+    setState(() => isLoading = true);
+
+    if (id == 0) {
       setState(() {
         bookedCourses = [];
         bookedModules = [];
@@ -66,19 +58,15 @@ class _StudentClassPageState extends State<StudentClassPage> {
 
     try {
       final response = await http
-          .get(
-            Uri.parse('http://127.0.0.1:8000/api/student/$studentId/subjects'),
-          )
+          .get(Uri.parse('http://10.0.2.2:8000/api/student/$id/subjects'))
+          .timeout(const Duration(seconds: 10));
+
+      final moduleResponse = await http
+          .get(Uri.parse('http://10.0.2.2:8000/api/student/$id/modules'))
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
-
-        final moduleResponse = await http
-            .get(
-              Uri.parse('http://127.0.0.1:8000/api/student/$studentId/modules'),
-            )
-            .timeout(const Duration(seconds: 10));
 
         List moduleData = [];
         if (moduleResponse.statusCode == 200) {
@@ -111,15 +99,11 @@ class _StudentClassPageState extends State<StudentClassPage> {
       } else {
         debugPrint('Student subjects API failed: ${response.statusCode}');
         debugPrint('Student subjects API body: ${response.body}');
-        setState(() {
-          isLoading = false;
-        });
+        setState(() => isLoading = false);
       }
     } catch (e) {
       debugPrint('Error fetching registered subjects/modules: $e');
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
@@ -147,7 +131,6 @@ class _StudentClassPageState extends State<StudentClassPage> {
                 ),
               ),
             ),
-
             Expanded(
               child: RefreshIndicator(
                 onRefresh: fetchRegisteredSubjects,
@@ -241,7 +224,6 @@ class _StudentClassPageState extends State<StudentClassPage> {
                                   ),
                                 ),
                               ),
-                            
                           ],
                         ),
                       ),
@@ -278,7 +260,6 @@ class _StudentClassPageState extends State<StudentClassPage> {
                 'assets/images/booked_course.png',
                 width: 78,
                 height: 78,
-                
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return const Icon(
@@ -377,12 +358,10 @@ class _StudentClassPageState extends State<StudentClassPage> {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          backgroundColor: isEnabled
-              ? const Color(0xFF67C5C4)
-              : const Color(0xFFE5E5E7),
-          foregroundColor: isEnabled
-              ? Colors.white
-              : const Color(0xFFB8B8BC),
+          backgroundColor:
+              isEnabled ? const Color(0xFF67C5C4) : const Color(0xFFE5E5E7),
+          foregroundColor:
+              isEnabled ? Colors.white : const Color(0xFFB8B8BC),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),

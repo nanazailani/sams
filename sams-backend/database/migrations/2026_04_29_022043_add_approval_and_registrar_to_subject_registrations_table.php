@@ -9,16 +9,21 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('subject_registrations', function (Blueprint $table) {
-            $table->enum('approval_status', ['Pending', 'Approved', 'Rejected'])
-                  ->default('Pending');
 
-            $table->unsignedBigInteger('registrar_id')->nullable();
+            if (!Schema::hasColumn('subject_registrations', 'approval_status')) {
+                $table->enum('approval_status', ['Pending', 'Approved', 'Rejected'])
+                    ->default('Pending');
+            }
 
-            // Foreign key (assuming it links to faculty_registrar table)
-            $table->foreign('registrar_id')
-                  ->references('id')
-                  ->on('faculty_registrar')
-                  ->onDelete('set null');
+            if (!Schema::hasColumn('subject_registrations', 'registrar_id')) {
+                $table->unsignedBigInteger('registrar_id')->nullable();
+
+                // Foreign key
+                $table->foreign('registrar_id')
+                    ->references('id')
+                    ->on('faculty_registrar')
+                    ->onDelete('set null');
+            }
         });
     }
 

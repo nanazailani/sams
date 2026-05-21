@@ -1,7 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'homepage.dart';
-import 'class.dart';
+import '../attendance/student/class.dart';
 import 'register_courses.dart';
 
 import 'curriculum_page.dart';

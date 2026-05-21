@@ -48,6 +48,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
       final response = await http
           .get(
             Uri.parse(
+              //'http://127.0.0.1:8000/api/attendance/${widget.classSessionId}/submissions',
               'http://10.0.2.2:8000/api/attendance/${widget.classSessionId}/submissions',
             ),
           )
@@ -85,6 +86,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
   Future<void> updateAttendanceStatus(String attendanceId, String status) async {
     try {
       final response = await http.post(
+        //Uri.parse('http://127.0.0.1:8000/api/attendance/$attendanceId/status'),
         Uri.parse('http://10.0.2.2:8000/api/attendance/$attendanceId/status'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'status': status}),
