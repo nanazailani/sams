@@ -5,7 +5,7 @@ import '../attendance/student/class.dart';
 import 'register_courses.dart';
 
 import 'curriculum_page.dart';
-import 'fee_dashboard.dart';
+import '../tuition_fee/student/fee_dashboard.dart';
 
 
 class MainNavigation extends StatefulWidget {

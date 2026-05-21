@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sams_frontend/student/mainNavigation.dart' as student_nav;
 import 'package:sams_frontend/attendance/lecturer/class.dart';
-import 'package:sams_frontend/treasurer/dashboard_page.dart' as treasurer_page;
+import 'package:sams_frontend/tuition_fee/treasurer/dashboard_page.dart' as treasurer_page;
 import 'package:sams_frontend/faculty_registrar/mainNavigation.dart' as faculty_reg_nav;
 import 'package:sams_frontend/pusat_adab/mainNavigation.dart' as pusat_adab_nav;
 
