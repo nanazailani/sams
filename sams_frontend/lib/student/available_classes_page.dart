@@ -44,7 +44,7 @@ class _AvailableClassesPageState extends State<AvailableClassesPage> {
     final savedStudentId = prefs.getInt('student_id');
 
     setState(() {
-      _resolvedStudentId = savedStudentId ?? widget.studentId;
+      _resolvedStudentId = savedStudentId ;
     });
 
 
@@ -79,7 +79,7 @@ class _AvailableClassesPageState extends State<AvailableClassesPage> {
   }
 
   Future<void> bookSchedule(int scheduleId) async {
-    final studentId = _resolvedStudentId ?? widget.studentId;
+    final studentId = _resolvedStudentId ;
     try {
       if (_studentId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -221,7 +221,7 @@ class _AvailableClassesPageState extends State<AvailableClassesPage> {
                             final bool isFull =
                                 item['status'] == 'full' ||
                                 ((item['booked_count'] ?? 0) >= (item['capacity'] ?? 0));
-                            final bool studentMissing = (_resolvedStudentId ?? widget.studentId) <= 0;
+                            final bool studentMissing = _resolvedStudentId == null || _resolvedStudentId! <= 0;
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
@@ -287,7 +287,7 @@ class _AvailableClassesPageState extends State<AvailableClassesPage> {
                                       padding: const EdgeInsets.symmetric(vertical: 10),
                                       decoration: BoxDecoration(
 
-                                        color: isFull ? Colors.grey : primaryColor,
+                                        // color: isFull ? Colors.grey : primaryColor,
 
                                         color: isFull
                                             ? Colors.grey

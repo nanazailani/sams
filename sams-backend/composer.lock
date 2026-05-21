@@ -1336,7 +1336,6 @@
         },
         {
             "name": "laravel/serializable-closure",
-<<<<<<< HEAD
             "version": "v2.0.13",
             "source": {
                 "type": "git",
@@ -1347,18 +1346,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/laravel/serializable-closure/zipball/b566ee0dd251f3c4078bed003a7ce015f5ea6dce",
                 "reference": "b566ee0dd251f3c4078bed003a7ce015f5ea6dce",
-=======
-            "version": "v2.0.12",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/laravel/serializable-closure.git",
-                "reference": "a6abb4e54f6fcd3138120b9ad497f0bd146f9919"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/laravel/serializable-closure/zipball/a6abb4e54f6fcd3138120b9ad497f0bd146f9919",
-                "reference": "a6abb4e54f6fcd3138120b9ad497f0bd146f9919",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -1406,11 +1393,7 @@
                 "issues": "https://github.com/laravel/serializable-closure/issues",
                 "source": "https://github.com/laravel/serializable-closure"
             },
-<<<<<<< HEAD
             "time": "2026-04-16T14:03:50+00:00"
-=======
-            "time": "2026-04-14T13:33:34+00:00"
->>>>>>> origin/main
         },
         {
             "name": "laravel/tinker",
@@ -3392,7 +3375,6 @@
         },
         {
             "name": "symfony/console",
-<<<<<<< HEAD
             "version": "v7.4.9",
             "source": {
                 "type": "git",
@@ -3403,18 +3385,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/symfony/console/zipball/d7d2b64a45a89d607865927b176fa51c33ddbb58",
                 "reference": "d7d2b64a45a89d607865927b176fa51c33ddbb58",
-=======
-            "version": "v7.4.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/console.git",
-                "reference": "1e92e39c51f95b88e3d66fa2d9f06d1fb45dd707"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/console/zipball/1e92e39c51f95b88e3d66fa2d9f06d1fb45dd707",
-                "reference": "1e92e39c51f95b88e3d66fa2d9f06d1fb45dd707",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -3479,11 +3449,7 @@
                 "terminal"
             ],
             "support": {
-<<<<<<< HEAD
                 "source": "https://github.com/symfony/console/tree/v7.4.9"
-=======
-                "source": "https://github.com/symfony/console/tree/v7.4.8"
->>>>>>> origin/main
             },
             "funding": [
                 {
@@ -3503,7 +3469,6 @@
                     "type": "tidelift"
                 }
             ],
-<<<<<<< HEAD
             "time": "2026-04-22T15:21:55+00:00"
         },
         {
@@ -3518,22 +3483,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/symfony/css-selector/zipball/b75663ed96cf4756e28e3105476f220f92886cc4",
                 "reference": "b75663ed96cf4756e28e3105476f220f92886cc4",
-=======
-            "time": "2026-03-30T13:54:39+00:00"
-        },
-        {
-            "name": "symfony/css-selector",
-            "version": "v7.4.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/css-selector.git",
-                "reference": "b055f228a4178a1d6774909903905e3475f3eac8"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/css-selector/zipball/b055f228a4178a1d6774909903905e3475f3eac8",
-                "reference": "b055f228a4178a1d6774909903905e3475f3eac8",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -3569,11 +3518,7 @@
             "description": "Converts CSS selectors to XPath expressions",
             "homepage": "https://symfony.com",
             "support": {
-<<<<<<< HEAD
                 "source": "https://github.com/symfony/css-selector/tree/v7.4.9"
-=======
-                "source": "https://github.com/symfony/css-selector/tree/v7.4.8"
->>>>>>> origin/main
             },
             "funding": [
                 {
@@ -3593,11 +3538,7 @@
                     "type": "tidelift"
                 }
             ],
-<<<<<<< HEAD
             "time": "2026-04-18T13:18:21+00:00"
-=======
-            "time": "2026-03-24T13:12:05+00:00"
->>>>>>> origin/main
         },
         {
             "name": "symfony/deprecation-contracts",
@@ -3750,7 +3691,6 @@
         },
         {
             "name": "symfony/event-dispatcher",
-<<<<<<< HEAD
             "version": "v7.4.9",
             "source": {
                 "type": "git",
@@ -3761,18 +3701,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/symfony/event-dispatcher/zipball/e4a2e29753c7801f7a8340e066cfa788f3bc8101",
                 "reference": "e4a2e29753c7801f7a8340e066cfa788f3bc8101",
-=======
-            "version": "v7.4.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/event-dispatcher.git",
-                "reference": "f57b899fa736fd71121168ef268f23c206083f0a"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/event-dispatcher/zipball/f57b899fa736fd71121168ef268f23c206083f0a",
-                "reference": "f57b899fa736fd71121168ef268f23c206083f0a",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -3824,11 +3752,7 @@
             "description": "Provides tools that allow your application components to communicate with each other by dispatching events and listening to them",
             "homepage": "https://symfony.com",
             "support": {
-<<<<<<< HEAD
                 "source": "https://github.com/symfony/event-dispatcher/tree/v7.4.9"
-=======
-                "source": "https://github.com/symfony/event-dispatcher/tree/v7.4.8"
->>>>>>> origin/main
             },
             "funding": [
                 {
@@ -3848,11 +3772,7 @@
                     "type": "tidelift"
                 }
             ],
-<<<<<<< HEAD
             "time": "2026-04-18T13:18:21+00:00"
-=======
-            "time": "2026-03-30T13:54:39+00:00"
->>>>>>> origin/main
         },
         {
             "name": "symfony/event-dispatcher-contracts",
@@ -4285,7 +4205,6 @@
         },
         {
             "name": "symfony/mime",
-<<<<<<< HEAD
             "version": "v7.4.9",
             "source": {
                 "type": "git",
@@ -4296,18 +4215,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/symfony/mime/zipball/2d550c4758ba4c47519a6667c36553d535705b0c",
                 "reference": "2d550c4758ba4c47519a6667c36553d535705b0c",
-=======
-            "version": "v7.4.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/mime.git",
-                "reference": "6df02f99998081032da3407a8d6c4e1dcb5d4379"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/mime/zipball/6df02f99998081032da3407a8d6c4e1dcb5d4379",
-                "reference": "6df02f99998081032da3407a8d6c4e1dcb5d4379",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -4363,11 +4270,7 @@
                 "mime-type"
             ],
             "support": {
-<<<<<<< HEAD
                 "source": "https://github.com/symfony/mime/tree/v7.4.9"
-=======
-                "source": "https://github.com/symfony/mime/tree/v7.4.8"
->>>>>>> origin/main
             },
             "funding": [
                 {
@@ -4387,11 +4290,7 @@
                     "type": "tidelift"
                 }
             ],
-<<<<<<< HEAD
             "time": "2026-04-29T13:21:53+00:00"
-=======
-            "time": "2026-03-30T14:11:46+00:00"
->>>>>>> origin/main
         },
         {
             "name": "symfony/polyfill-ctype",
@@ -5289,7 +5188,6 @@
         },
         {
             "name": "symfony/routing",
-<<<<<<< HEAD
             "version": "v7.4.9",
             "source": {
                 "type": "git",
@@ -5300,18 +5198,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/symfony/routing/zipball/287771d8bc86eacb30678dd10eda6c64a859951f",
                 "reference": "287771d8bc86eacb30678dd10eda6c64a859951f",
-=======
-            "version": "v7.4.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/routing.git",
-                "reference": "9608de9873ec86e754fb6c0a0fa7e5f1a960eb6b"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/routing/zipball/9608de9873ec86e754fb6c0a0fa7e5f1a960eb6b",
-                "reference": "9608de9873ec86e754fb6c0a0fa7e5f1a960eb6b",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -5363,11 +5249,7 @@
                 "url"
             ],
             "support": {
-<<<<<<< HEAD
                 "source": "https://github.com/symfony/routing/tree/v7.4.9"
-=======
-                "source": "https://github.com/symfony/routing/tree/v7.4.8"
->>>>>>> origin/main
             },
             "funding": [
                 {
@@ -5387,11 +5269,7 @@
                     "type": "tidelift"
                 }
             ],
-<<<<<<< HEAD
             "time": "2026-04-22T15:21:55+00:00"
-=======
-            "time": "2026-03-24T13:12:05+00:00"
->>>>>>> origin/main
         },
         {
             "name": "symfony/service-contracts",
@@ -5755,7 +5633,6 @@
         },
         {
             "name": "symfony/uid",
-<<<<<<< HEAD
             "version": "v7.4.9",
             "source": {
                 "type": "git",
@@ -5766,18 +5643,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/symfony/uid/zipball/2676b524340abcfe4d6151ec698463cebafee439",
                 "reference": "2676b524340abcfe4d6151ec698463cebafee439",
-=======
-            "version": "v7.4.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/uid.git",
-                "reference": "6883ebdf7bf6a12b37519dbc0df62b0222401b56"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/uid/zipball/6883ebdf7bf6a12b37519dbc0df62b0222401b56",
-                "reference": "6883ebdf7bf6a12b37519dbc0df62b0222401b56",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -5822,11 +5687,7 @@
                 "uuid"
             ],
             "support": {
-<<<<<<< HEAD
                 "source": "https://github.com/symfony/uid/tree/v7.4.9"
-=======
-                "source": "https://github.com/symfony/uid/tree/v7.4.8"
->>>>>>> origin/main
             },
             "funding": [
                 {
@@ -5846,11 +5707,7 @@
                     "type": "tidelift"
                 }
             ],
-<<<<<<< HEAD
             "time": "2026-04-30T15:19:22+00:00"
-=======
-            "time": "2026-03-24T13:12:05+00:00"
->>>>>>> origin/main
         },
         {
             "name": "symfony/var-dumper",
@@ -6489,7 +6346,6 @@
         },
         {
             "name": "laravel/sail",
-<<<<<<< HEAD
             "version": "v1.58.0",
             "source": {
                 "type": "git",
@@ -6500,18 +6356,6 @@
                 "type": "zip",
                 "url": "https://api.github.com/repos/laravel/sail/zipball/2e5e968138ca52ed87d712449697a8364d73b466",
                 "reference": "2e5e968138ca52ed87d712449697a8364d73b466",
-=======
-            "version": "v1.57.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/laravel/sail.git",
-                "reference": "fa8d057b6e9310380ccbc3a209ed7f927d54f648"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/laravel/sail/zipball/fa8d057b6e9310380ccbc3a209ed7f927d54f648",
-                "reference": "fa8d057b6e9310380ccbc3a209ed7f927d54f648",
->>>>>>> origin/main
                 "shasum": ""
             },
             "require": {
@@ -6561,11 +6405,7 @@
                 "issues": "https://github.com/laravel/sail/issues",
                 "source": "https://github.com/laravel/sail"
             },
-<<<<<<< HEAD
             "time": "2026-04-27T13:38:34+00:00"
-=======
-            "time": "2026-04-14T13:32:04+00:00"
->>>>>>> origin/main
         },
         {
             "name": "mockery/mockery",

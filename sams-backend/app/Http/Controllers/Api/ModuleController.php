@@ -2,21 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\ModuleSchedule;
-use App\Models\ModuleRegistration;
-use App\Models\ModuleAttendance;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Module;
+use App\Models\ModuleAttendance;
+use App\Models\ModuleRegistration;
+use App\Models\ModuleSchedule;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
-<<<<<<< HEAD
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-=======
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
->>>>>>> origin/main
 
 class ModuleController extends Controller
 {
@@ -41,8 +36,8 @@ class ModuleController extends Controller
                 if ($registration && $registration->schedule) {
                     $booked = true;
 
-                    $date = \Carbon\Carbon::parse($registration->schedule->class_date)->format('d/m/Y');
-                    $time = \Carbon\Carbon::parse($registration->schedule->start_time)->format('h:i A');
+                    $date = Carbon::parse($registration->schedule->class_date)->format('d/m/Y');
+                    $time = Carbon::parse($registration->schedule->start_time)->format('h:i A');
 
                     $bookedClassDate = $date . ', ' . $time;
                 }
@@ -65,10 +60,10 @@ class ModuleController extends Controller
             'data' => $data,
         ]);
     }
+
     public function schedules($id): JsonResponse
     {
-        $module = Module::with(['lecturer.user', 'schedules'])
-            ->findOrFail($id);
+        $module = Module::with(['lecturer.user', 'schedules'])->findOrFail($id);
 
         $data = $module->schedules->map(function ($schedule) use ($module) {
             return [
@@ -127,14 +122,7 @@ class ModuleController extends Controller
 
         $schedule = ModuleSchedule::findOrFail($request->module_schedule_id);
 
-        if ($schedule->status === 'full') {
-            return response()->json([
-                'status' => false,
-                'message' => 'This class is already full.',
-            ], 400);
-        }
-
-        if ($schedule->booked_count >= $schedule->capacity) {
+        if ($schedule->status === 'full' || $schedule->booked_count >= $schedule->capacity) {
             $schedule->status = 'full';
             $schedule->save();
 
@@ -148,14 +136,6 @@ class ModuleController extends Controller
             ->where('module_id', $request->module_id)
             ->where('module_schedule_id', $request->module_schedule_id)
             ->exists();
-
-        Log::info('Module booking duplicate check', [
-            'student_id' => $resolvedStudentId,
-            'incoming_student_id' => $request->student_id,
-            'module_id' => $request->module_id,
-            'module_schedule_id' => $request->module_schedule_id,
-            'already_booked' => $alreadyBooked,
-        ]);
 
         if ($alreadyBooked) {
             return response()->json([
@@ -184,10 +164,10 @@ class ModuleController extends Controller
             'data' => $registration,
         ]);
     }
-<<<<<<< HEAD
+
     public function myBookings(Request $request): JsonResponse
     {
-        $studentId = $request->query('student_id');
+        $studentId = $this->resolveStudentId($request->query('student_id'));
 
         if (!$studentId) {
             return response()->json([
@@ -207,8 +187,6 @@ class ModuleController extends Controller
             if ($registration->schedule && $registration->schedule->class_date) {
                 $scheduleDate = Carbon::parse($registration->schedule->class_date);
                 $today = Carbon::today();
-
-                // boleh cancel sebelum hari event sahaja
                 $canCancel = $today->lt($scheduleDate);
             }
 
@@ -225,8 +203,6 @@ class ModuleController extends Controller
 
                 if (strtoupper($attendanceStatus) === 'PRESENT') {
                     $attendancePercentage = '98%';
-                } elseif (strtoupper($attendanceStatus) === 'ABSENT') {
-                    $attendancePercentage = '--';
                 } elseif (strtoupper($attendanceStatus) === 'LATE') {
                     $attendancePercentage = '80%';
                 }
@@ -296,54 +272,54 @@ class ModuleController extends Controller
     }
 
     public function creditClaims(Request $request): JsonResponse
-{
-    $studentId = $request->query('student_id');
+    {
+        $studentId = $this->resolveStudentId($request->query('student_id'));
 
-    if (!$studentId) {
+        if (!$studentId) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Student ID is required.',
+            ], 400);
+        }
+
+        $registrations = ModuleRegistration::with(['module', 'schedule'])
+            ->where('student_id', $studentId)
+            ->orderByDesc('id')
+            ->get();
+
+        $data = $registrations->map(function ($registration) {
+            $attendance = ModuleAttendance::where('student_id', $registration->student_id)
+                ->where('module_session_id', $registration->module_schedule_id)
+                ->latest()
+                ->first();
+
+            $attendanceStatus = strtoupper($attendance->status ?? '--');
+            $progress = $attendanceStatus === 'PRESENT';
+
+            $claim = DB::table('credit_claims')
+                ->where('registration_id', $registration->id)
+                ->latest('id')
+                ->first();
+
+            $claimStatus = $claim->status ?? '--';
+
+            return [
+                'registration_id' => $registration->id,
+                'module_id' => $registration->module_id,
+                'code' => $registration->module->code ?? '',
+                'name' => $registration->module->name ?? '',
+                'attendance_status' => $attendanceStatus,
+                'progress_completed' => $progress,
+                'claim_status' => strtoupper($claimStatus),
+                'can_claim' => $progress && !$claim,
+            ];
+        });
+
         return response()->json([
-            'status' => false,
-            'message' => 'Student ID is required.',
-        ], 400);
+            'status' => true,
+            'data' => $data,
+        ]);
     }
-
-    $registrations = ModuleRegistration::with(['module', 'schedule'])
-        ->where('student_id', $studentId)
-        ->orderByDesc('id')
-        ->get();
-
-    $data = $registrations->map(function ($registration) {
-        $attendance = ModuleAttendance::where('student_id', $registration->student_id)
-            ->where('module_session_id', $registration->module_schedule_id)
-            ->latest()
-            ->first();
-
-        $attendanceStatus = strtoupper($attendance->status ?? '--');
-        $progress = $attendanceStatus === 'PRESENT';
-
-        $claim = DB::table('credit_claims')
-            ->where('registration_id', $registration->id)
-            ->latest('id')
-            ->first();
-
-        $claimStatus = $claim->status ?? '--';
-
-        return [
-            'registration_id' => $registration->id,
-            'module_id' => $registration->module_id,
-            'code' => $registration->module->code ?? '',
-            'name' => $registration->module->name ?? '',
-            'attendance_status' => $attendanceStatus,
-            'progress_completed' => $progress,
-            'claim_status' => strtoupper($claimStatus),
-            'can_claim' => $progress && !$claim,
-        ];
-    });
-
-    return response()->json([
-        'status' => true,
-        'data' => $data,
-    ]);
-}
 
     public function applyCreditClaim(Request $request): JsonResponse
     {
@@ -352,9 +328,11 @@ class ModuleController extends Controller
             'student_id' => 'required|integer',
         ]);
 
+        $resolvedStudentId = $this->resolveStudentId((int) $request->student_id);
+
         $registration = ModuleRegistration::with(['module', 'schedule'])
             ->where('id', $request->registration_id)
-            ->where('student_id', $request->student_id)
+            ->where('student_id', $resolvedStudentId)
             ->first();
 
         if (!$registration) {
@@ -402,9 +380,6 @@ class ModuleController extends Controller
         ]);
     }
 
-}
-=======
-
     private function resolveStudentId($incomingStudentId): ?int
     {
         if (!$incomingStudentId) {
@@ -446,4 +421,3 @@ class ModuleController extends Controller
         return null;
     }
 }
->>>>>>> origin/main

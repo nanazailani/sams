@@ -116,7 +116,7 @@ class _BookNowPageState extends State<BookNowPage> {
       MaterialPageRoute(
         builder: (context) => AvailableClassesPage(
           module: module,
-          studentId: _studentId!,
+          // studentId: _studentId!,
         ),
       ),
     );
