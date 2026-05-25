@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../main.dart' show LoginPage;
+import 'verify_student_payment_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -26,6 +29,11 @@ class _TreasurerFeeDashboardPageState
   String _selectedTab = 'Pending';
   String? _selectedCourse;
   String? _selectedBatch;
+  Map<String, dynamic> _summary = {
+    'pending_count': 0,
+    'approved_count': 0,
+    'rejected_count': 0,
+  };
 
   final List<String> _courseOptions = [
     'All',
@@ -71,10 +79,6 @@ class _TreasurerFeeDashboardPageState
         queryParams['search'] = _searchController.text.trim();
       }
 
-      if (_selectedCourse != null && _selectedCourse != 'All') {
-        queryParams['course'] = _selectedCourse!;
-      }
-
       if (_selectedTab != 'Pending') {
         queryParams['status'] = _selectedTab;
       }
@@ -86,9 +90,13 @@ class _TreasurerFeeDashboardPageState
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
+        final records = decoded['records'];
 
         setState(() {
-          _allPayments = decoded['data'] ?? [];
+          _summary = Map<String, dynamic>.from(decoded['summary'] ?? {});
+          _allPayments = records is Map
+              ? (records['data'] as List? ?? [])
+              : (decoded['data'] as List? ?? []);
         });
       } else {
         _showMessage('Failed to load payment records');
@@ -106,40 +114,55 @@ class _TreasurerFeeDashboardPageState
     return _allPayments.where((item) {
       final matric = (item['matric_no'] ?? '').toString().toLowerCase();
       final name = (item['name'] ?? '').toString().toLowerCase();
-      final programme = (item['programme'] ?? '').toString();
+      final programme = (item['programme'] ?? '').toString().toLowerCase();
       final search = _searchController.text.trim().toLowerCase();
 
       final matchesSearch = search.isEmpty ||
           matric.contains(search) ||
           name.contains(search);
 
-      final matchesCourse =
-          _selectedCourse == null ||
+      final selectedCourse = (_selectedCourse ?? '').toLowerCase();
+      final matchesCourse = _selectedCourse == null ||
           _selectedCourse == 'All' ||
-          programme == _selectedCourse;
+          programme == selectedCourse ||
+          selectedCourse.contains(programme) ||
+          programme.contains(selectedCourse);
 
-      final batchText = (item['semester'] ?? '').toString();
+      final batchText =
+          '${item['semester'] ?? ''} ${item['session'] ?? ''} ${item['matric_no'] ?? ''}'
+              .toString();
+      final batchShort = (_selectedBatch != null && _selectedBatch!.length == 4)
+          ? _selectedBatch!.substring(2)
+          : _selectedBatch;
       final matchesBatch = _selectedBatch == null ||
           _selectedBatch == 'All' ||
-          batchText.contains(_selectedBatch!);
+          batchText.contains(_selectedBatch!) ||
+          (batchShort != null && matric.contains(batchShort.toLowerCase()));
 
       return matchesSearch && matchesCourse && matchesBatch;
     }).toList();
   }
 
-  int get _pendingCount => _selectedTab == 'Pending'
-      ? _filteredPayments.length
-      : _allPayments
-            .where((e) => (e['status'] ?? '').toString().toLowerCase() == 'pending')
-            .length;
+  int _summaryCount(String key) {
+    return int.tryParse((_summary[key] ?? 0).toString()) ?? 0;
+  }
 
-  int get _approvedCount => _allPayments
-      .where((e) => (e['status'] ?? '').toString().toLowerCase() == 'approved')
-      .length;
+  int get _pendingCount => _summaryCount('pending_count');
 
-  int get _rejectedCount => _allPayments
-      .where((e) => (e['status'] ?? '').toString().toLowerCase() == 'rejected')
-      .length;
+  int get _approvedCount => _summaryCount('approved_count');
+
+  int get _rejectedCount => _summaryCount('rejected_count');
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
 
   void _showMessage(String message) {
     if (!mounted) return;
@@ -189,17 +212,27 @@ class _TreasurerFeeDashboardPageState
                   height: 95,
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 22),
-                  alignment: Alignment.centerLeft,
                   decoration: const BoxDecoration(
                     color: primaryColor,
                   ),
-                  child: const Text(
-                    'Tuition Fee Management',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Tuition Fee Management',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _logout,
+                        icon: const Icon(Icons.logout, color: Colors.white),
+                        tooltip: 'Logout',
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 22),
@@ -492,8 +525,19 @@ class _TreasurerFeeDashboardPageState
                                                   height: 36,
                                                   child: ElevatedButton(
                                                     onPressed: () {
-                                                      _showMessage(
-                                                        'Next page: Verify payment for ID ${item['id']}',
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              VerifyStudentPaymentPage(
+                                                            paymentId:
+                                                                int.tryParse(
+                                                                      item['id']
+                                                                          .toString(),
+                                                                    ) ??
+                                                                    0,
+                                                          ),
+                                                        ),
                                                       );
                                                     },
                                                     style: ElevatedButton.styleFrom(
