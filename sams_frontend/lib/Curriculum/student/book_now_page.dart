@@ -112,6 +112,64 @@ class _BookNowPageState extends State<BookNowPage> {
     });
   }
 
+  Widget _bookingReminder() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1B8),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF5D56A)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.push_pin,
+            size: 24,
+            color: Color(0xFFD44220),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Reminder',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF2F2F2F),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Passed modules cannot be booked\n'
+                  'Same core module: max 2 attempts\n'
+                  'Only not taken / failed modules allowed\n'
+                  'Maximum 2 modules per booking',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF3D3D3D),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openAvailableClasses(ModuleModel module) async {
     if (module.booked) return;
 
@@ -177,6 +235,8 @@ class _BookNowPageState extends State<BookNowPage> {
                           padding: const EdgeInsets.all(16),
                           children: [
                             const SizedBox(height: 16),
+                            _bookingReminder(),
+                            const SizedBox(height: 14),
                             TextField(
                               controller: _searchController,
                               decoration: InputDecoration(

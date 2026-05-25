@@ -137,6 +137,7 @@ class _CreditClaimPageState extends State<CreditClaimPage> {
     if (status == 'APPROVED') return 'Successfully Claimed';
     if (status == 'IN PROGRESS') return 'In Progress';
     if (status == 'REJECTED') return 'Rejected';
+    if (item['class_ended'] == false) return 'Available After Class Ends';
     if (!canClaim) return 'Not Eligible';
 
     return 'Claim Now';

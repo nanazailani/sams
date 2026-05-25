@@ -20,7 +20,7 @@ class ModuleController extends Controller
     {
         $studentId = $this->resolveStudentId($request->query('student_id'));
         $scope = strtolower((string) $request->query('scope', 'booking'));
-        $today = Carbon::today();
+        $now = Carbon::now();
 
         $modules = Module::with(['lecturer.user', 'registrations.schedule', 'schedules'])
             ->orderBy('code')
@@ -28,29 +28,52 @@ class ModuleController extends Controller
             ->unique(fn ($module) => strtoupper(trim((string) $module->code)))
             ->values();
 
-        $data = $modules->map(function ($module) use ($studentId, $scope, $today) {
+        $data = $modules->map(function ($module) use ($studentId, $scope, $now) {
             $booked = false;
             $bookedClassDate = null;
             $bookableSchedules = $module->schedules
-                ->filter(function ($schedule) use ($today) {
+                ->filter(function ($schedule) use ($now) {
+                    $classStart = $schedule->class_date && $schedule->start_time
+                        ? Carbon::parse($schedule->class_date . ' ' . $schedule->start_time)
+                        : null;
+
                     return $schedule->class_date
-                        && Carbon::parse($schedule->class_date)->greaterThanOrEqualTo($today)
+                        && $classStart
+                        && $classStart->greaterThanOrEqualTo($now)
                         && $schedule->status === 'available'
                         && (int) $schedule->booked_count < (int) $schedule->capacity;
                 })
-                ->sortBy('class_date')
+                ->sortBy(fn ($schedule) => $schedule->class_date . ' ' . $schedule->start_time)
                 ->values();
             $firstSchedule = $scope === 'all'
-                ? $module->schedules->sortBy('class_date')->first()
+                ? $module->schedules->sortBy(fn ($schedule) => $schedule->class_date . ' ' . $schedule->start_time)->first()
                 : $bookableSchedules->first();
+
+            if (
+                $scope !== 'all'
+                && $studentId
+                && (
+                    $this->studentCompletedModule((int) $studentId, (int) $module->id)
+                    || $this->studentReachedModuleAttemptLimit((int) $studentId, (int) $module->id)
+                )
+            ) {
+                return null;
+            }
 
             if ($studentId) {
                 $registration = $module->registrations
                     ->where('student_id', (int) $studentId)
-                    ->filter(function ($registration) use ($today) {
+                    ->filter(function ($registration) use ($now) {
+                        $classStart = $registration->schedule
+                            && $registration->schedule->class_date
+                            && $registration->schedule->start_time
+                            ? Carbon::parse($registration->schedule->class_date . ' ' . $registration->schedule->start_time)
+                            : null;
+
                         return $registration->schedule
                             && $registration->schedule->class_date
-                            && Carbon::parse($registration->schedule->class_date)->greaterThanOrEqualTo($today);
+                            && $classStart
+                            && $classStart->greaterThanOrEqualTo($now);
                     })
                     ->sortByDesc('id')
                     ->first();
@@ -116,22 +139,27 @@ class ModuleController extends Controller
     public function schedules(Request $request, $id): JsonResponse
     {
         $scope = strtolower((string) $request->query('scope', 'booking'));
-        $today = Carbon::today();
+        $now = Carbon::now();
         $module = Module::with(['lecturer.user', 'schedules.lecturer.user'])
             ->findOrFail($id);
 
         $schedules = $module->schedules;
 
         if ($scope !== 'all') {
-            $schedules = $schedules->filter(function ($schedule) use ($today) {
+            $schedules = $schedules->filter(function ($schedule) use ($now) {
+                $classStart = $schedule->class_date && $schedule->start_time
+                    ? Carbon::parse($schedule->class_date . ' ' . $schedule->start_time)
+                    : null;
+
                 return $schedule->class_date
-                    && Carbon::parse($schedule->class_date)->greaterThanOrEqualTo($today)
+                    && $classStart
+                    && $classStart->greaterThanOrEqualTo($now)
                     && $schedule->status === 'available'
                     && (int) $schedule->booked_count < (int) $schedule->capacity;
             });
         }
 
-        $data = $schedules->sortBy('class_date')->map(function ($schedule) use ($module) {
+        $data = $schedules->sortBy(fn ($schedule) => $schedule->class_date . ' ' . $schedule->start_time)->map(function ($schedule) use ($module) {
             $lecturerName = $schedule->lecturer?->user?->name
                 ?? $module->lecturer?->user?->name
                 ?? 'N/A';
@@ -193,10 +221,35 @@ class ModuleController extends Controller
 
         $schedule = ModuleSchedule::findOrFail($request->module_schedule_id);
 
-        if ($schedule->class_date && Carbon::parse($schedule->class_date)->lt(Carbon::today())) {
+        if ((int) $schedule->module_id !== (int) $request->module_id) {
             return response()->json([
                 'status' => false,
-                'message' => 'This class date has already passed.',
+                'message' => 'Selected class does not belong to this module.',
+            ], 400);
+        }
+
+        if ($this->studentCompletedModule($resolvedStudentId, (int) $request->module_id)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Student already completed attendance for this module.',
+            ], 400);
+        }
+
+        if ($this->studentReachedModuleAttemptLimit($resolvedStudentId, (int) $request->module_id)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Student has reached the maximum 2 attempts for this module.',
+            ], 400);
+        }
+
+        $classStart = $schedule->class_date && $schedule->start_time
+            ? Carbon::parse($schedule->class_date . ' ' . $schedule->start_time)
+            : null;
+
+        if ($classStart && $classStart->lt(Carbon::now())) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This class has already started or passed.',
             ], 400);
         }
 
@@ -217,9 +270,7 @@ class ModuleController extends Controller
             ], 400);
         }
 
-        $alreadyBooked = ModuleRegistration::where('student_id', $resolvedStudentId)
-            ->where('module_id', $request->module_id)
-            ->exists();
+        $alreadyBooked = $this->studentHasActiveModuleBooking($resolvedStudentId, (int) $request->module_id);
 
         Log::info('Module booking duplicate check', [
             'student_id' => $resolvedStudentId,
@@ -705,9 +756,7 @@ class ModuleController extends Controller
     $registrations = ModuleRegistration::with(['module', 'schedule'])
         ->where('student_id', $studentId)
         ->orderByDesc('id')
-        ->get()
-        ->unique('module_id')
-        ->values();
+        ->get();
 
     $data = $registrations->map(function ($registration) {
         $attendance = ModuleAttendance::where('student_id', $registration->student_id)
@@ -716,7 +765,12 @@ class ModuleController extends Controller
             ->first();
 
         $attendanceStatus = strtoupper($attendance->status ?? '--');
-        $progress = $attendanceStatus === 'PRESENT';
+        $attended = in_array($attendanceStatus, ['PRESENT', 'LATE'], true);
+        $classEnded = $registration->schedule
+            && $registration->schedule->class_date
+            && $registration->schedule->end_time
+            && Carbon::parse($registration->schedule->class_date . ' ' . $registration->schedule->end_time)->lte(now());
+        $progress = $attended && $classEnded;
 
         $claim = DB::table('credit_claims')
             ->where('registration_id', $registration->id)
@@ -725,7 +779,7 @@ class ModuleController extends Controller
 
         $claimStatus = $claim->status ?? '--';
 
-        if ($attendanceStatus !== 'PRESENT' && !$claim) {
+        if (!$attended && !$claim) {
             return null;
         }
 
@@ -737,9 +791,19 @@ class ModuleController extends Controller
             'attendance_status' => $attendanceStatus,
             'progress_completed' => $progress,
             'claim_status' => strtoupper($claimStatus),
+            'class_ended' => $classEnded,
             'can_claim' => $progress && !$claim,
         ];
-    })->filter()->values();
+    })->filter()
+        ->sortByDesc(function ($item) {
+            if ($item['can_claim'] === true) {
+                return 2;
+            }
+
+            return $item['claim_status'] !== '--' ? 1 : 0;
+        })
+        ->unique('module_id')
+        ->values();
 
     return response()->json([
         'status' => true,
@@ -780,10 +844,24 @@ class ModuleController extends Controller
             ->latest()
             ->first();
 
-        if (!$attendance || strtoupper($attendance->status ?? '') !== 'PRESENT') {
+        $attendanceStatus = strtoupper($attendance->status ?? '');
+
+        if (!$attendance || !in_array($attendanceStatus, ['PRESENT', 'LATE'], true)) {
             return response()->json([
                 'status' => false,
                 'message' => 'Credit claim is only allowed after successful attendance.',
+            ], 400);
+        }
+
+        $classEnded = $registration->schedule
+            && $registration->schedule->class_date
+            && $registration->schedule->end_time
+            && Carbon::parse($registration->schedule->class_date . ' ' . $registration->schedule->end_time)->lte(now());
+
+        if (!$classEnded) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Credit claim is only allowed after the module class has finished.',
             ], 400);
         }
 
@@ -1136,5 +1214,51 @@ class ModuleController extends Controller
         }
 
         return null;
+    }
+
+    private function studentCompletedModule(int $studentId, int $moduleId): bool
+    {
+        $scheduleIds = ModuleRegistration::where('student_id', $studentId)
+            ->where('module_id', $moduleId)
+            ->pluck('module_schedule_id')
+            ->filter()
+            ->values();
+
+        if ($scheduleIds->isEmpty()) {
+            return false;
+        }
+
+        return ModuleAttendance::where('student_id', $studentId)
+            ->whereIn('module_session_id', $scheduleIds)
+            ->whereRaw('UPPER(status) IN (?, ?)', ['PRESENT', 'LATE'])
+            ->exists();
+    }
+
+    private function studentReachedModuleAttemptLimit(int $studentId, int $moduleId): bool
+    {
+        return ModuleRegistration::where('student_id', $studentId)
+            ->where('module_id', $moduleId)
+            ->count() >= 2;
+    }
+
+    private function studentHasActiveModuleBooking(int $studentId, int $moduleId): bool
+    {
+        return ModuleRegistration::with('schedule')
+            ->where('student_id', $studentId)
+            ->where('module_id', $moduleId)
+            ->get()
+            ->contains(function ($registration) {
+                if (
+                    !$registration->schedule
+                    || !$registration->schedule->class_date
+                    || !$registration->schedule->start_time
+                ) {
+                    return false;
+                }
+
+                return Carbon::parse(
+                    $registration->schedule->class_date . ' ' . $registration->schedule->start_time
+                )->greaterThanOrEqualTo(Carbon::now());
+            });
     }
 }
