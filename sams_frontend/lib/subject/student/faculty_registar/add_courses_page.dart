@@ -4,6 +4,48 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+const _weekdayOptions = [
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+];
+
+const _timeOptions = [
+  '08:00 - 09:50',
+  '10:00 - 11:50',
+  '12:00 - 13:50',
+  '14:00 - 15:50',
+  '16:00 - 17:50',
+];
+
+String _normalizedDay(String day) {
+  return _weekdayOptions.contains(day) ? day : _weekdayOptions.first;
+}
+
+String _normalizedTime(String time) {
+  switch (time) {
+    case '8:00 AM':
+    case '9:00 AM':
+      return '08:00 - 09:50';
+    case '10:00 AM':
+    case '11:00 AM':
+      return '10:00 - 11:50';
+    case '12:00 PM':
+    case '1:00 PM':
+      return '12:00 - 13:50';
+    case '2:00 PM':
+    case '3:00 PM':
+      return '14:00 - 15:50';
+    case '4:00 PM':
+    case '5:00 PM':
+      return '16:00 - 17:50';
+    default:
+      return _timeOptions.contains(time) ? time : _timeOptions.first;
+  }
+}
+
 class AddCoursesPage extends StatefulWidget {
   final VoidCallback onCourseSaved;
 
@@ -19,6 +61,7 @@ class AddCoursesPage extends StatefulWidget {
 class _AddCoursesPageState extends State<AddCoursesPage> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
+  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
 
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
@@ -27,16 +70,21 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
   final _examDateController = TextEditingController();
   final List<_ClassEntry> _sections = [_ClassEntry()];
   final List<_ClassEntry> _tutorials = [_ClassEntry()];
+  List<_LecturerOption>? _lecturers = [];
 
   bool _hasExamination = true;
   bool _examIsAm = true;
   bool _isSaving = false;
   int _registrarId = 0;
 
+  List<_LecturerOption> get _lecturerOptions =>
+      _lecturers ?? const <_LecturerOption>[];
+
   @override
   void initState() {
     super.initState();
     _loadSession();
+    _fetchLecturers();
   }
 
   @override
@@ -60,9 +108,41 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
   }
 
   void _addEntry(List<_ClassEntry> entries) {
+    final lecturers = _lecturerOptions;
+
     setState(() {
-      entries.add(_ClassEntry());
+      entries.add(_ClassEntry(
+        instructor: lecturers.isEmpty ? '' : lecturers.first.label,
+      ));
     });
+  }
+
+  Future<void> _fetchLecturers() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_apiBaseUrl/lecturers'))
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted || res.statusCode != 200) return;
+
+      final decoded = jsonDecode(res.body);
+      final List raw = decoded is List ? decoded : decoded['data'] ?? [];
+      final lecturers = raw
+          .map((item) =>
+              _LecturerOption.fromJson(Map<String, dynamic>.from(item)))
+          .where((lecturer) => lecturer.label.isNotEmpty)
+          .toList();
+
+      setState(() {
+        _lecturers = lecturers;
+        final defaultLecturer = lecturers.isEmpty ? null : lecturers.first.label;
+        if (defaultLecturer == null) return;
+
+        for (final entry in [..._sections, ..._tutorials]) {
+          if (entry.instructor.isEmpty) entry.instructor = defaultLecturer;
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _pickExamDate() async {
@@ -84,8 +164,7 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
     setState(() => _isSaving = true);
     try {
       final res = await http.post(
-        Uri.parse('http://10.0.2.2:8000/api/subjects'),
-        // Uri.parse('http://127.0.0.1:8000/api/subjects'),
+        Uri.parse('$_apiBaseUrl/subjects'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -376,16 +455,8 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
             const SizedBox(width: 44, child: _FormLabel('Day:')),
             Expanded(
               child: _PillDropdown(
-                value: entry.day,
-                items: const [
-                  'Mon',
-                  'Tue',
-                  'Wed',
-                  'Thu',
-                  'Fri',
-                  'Sat',
-                  'Sun',
-                ],
+                value: _normalizedDay(entry.day),
+                items: _weekdayOptions,
                 onChanged: (value) => setState(() => entry.day = value),
               ),
             ),
@@ -397,19 +468,8 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
             const SizedBox(width: 88, child: _FormLabel('Time:')),
             Expanded(
               child: _PillDropdown(
-                value: entry.time,
-                items: const [
-                  '8:00 AM',
-                  '9:00 AM',
-                  '10:00 AM',
-                  '11:00 AM',
-                  '12:00 PM',
-                  '1:00 PM',
-                  '2:00 PM',
-                  '3:00 PM',
-                  '4:00 PM',
-                  '5:00 PM',
-                ],
+                value: _normalizedTime(entry.time),
+                items: _timeOptions,
                 onChanged: (value) => setState(() => entry.time = value),
               ),
             ),
@@ -442,10 +502,21 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
           ],
         ),
         const SizedBox(height: 10),
-        _buildTextRow(
-          label: 'Instructor:',
-          controller: entry.instructorController,
-          validator: _required,
+        _buildInstructorRow(entry),
+      ],
+    );
+  }
+
+  Widget _buildInstructorRow(_ClassEntry entry) {
+    return Row(
+      children: [
+        const SizedBox(width: 88, child: _FormLabel('Instructor:')),
+        Expanded(
+          child: _LecturerDropdown(
+            value: entry.instructor,
+            lecturers: _lecturerOptions,
+            onChanged: (value) => setState(() => entry.instructor = value),
+          ),
         ),
       ],
     );
@@ -508,18 +579,20 @@ class _ClassEntry {
   final nameController = TextEditingController();
   final locationController = TextEditingController();
   final capacityController = TextEditingController();
-  final instructorController = TextEditingController();
   String day = 'Mon';
-  String time = '8:00 AM';
+  String time = '08:00 - 09:50';
+  String instructor;
+
+  _ClassEntry({this.instructor = ''});
 
   Map<String, dynamic> toJson() {
     return {
       'name': nameController.text.trim(),
-      'day': day,
-      'time': time,
+      'day': _normalizedDay(day),
+      'time': _normalizedTime(time),
       'location': locationController.text.trim(),
       'capacity': int.tryParse(capacityController.text.trim()) ?? 0,
-      'instructor': instructorController.text.trim(),
+      'instructor': instructor,
     };
   }
 
@@ -527,7 +600,29 @@ class _ClassEntry {
     nameController.dispose();
     locationController.dispose();
     capacityController.dispose();
-    instructorController.dispose();
+  }
+}
+
+class _LecturerOption {
+  final String staffId;
+  final String name;
+
+  const _LecturerOption({
+    required this.staffId,
+    required this.name,
+  });
+
+  factory _LecturerOption.fromJson(Map<String, dynamic> json) {
+    return _LecturerOption(
+      staffId: json['staff_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+    );
+  }
+
+  String get label {
+    if (staffId.isEmpty) return name;
+    if (name.isEmpty) return staffId;
+    return '$staffId - $name';
   }
 }
 
@@ -606,8 +701,10 @@ class _PillDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedValue = items.contains(value) ? value : items.first;
+
     return DropdownButtonFormField<String>(
-      initialValue: value,
+      initialValue: selectedValue,
       isExpanded: true,
       icon: const Icon(Icons.arrow_drop_down, size: 18),
       style: const TextStyle(color: Colors.black87, fontSize: 11),
@@ -628,6 +725,60 @@ class _PillDropdown extends StatelessWidget {
       onChanged: (value) {
         if (value != null) onChanged(value);
       },
+    );
+  }
+}
+
+class _LecturerDropdown extends StatelessWidget {
+  final String value;
+  final List<_LecturerOption>? lecturers;
+  final ValueChanged<String> onChanged;
+
+  const _LecturerDropdown({
+    required this.value,
+    required this.lecturers,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lecturerOptions = lecturers ?? const <_LecturerOption>[];
+    final labels = lecturerOptions.map((lecturer) => lecturer.label).toList();
+    final selectedValue = labels.contains(value) ? value : null;
+
+    return DropdownButtonFormField<String>(
+      initialValue: selectedValue,
+      isExpanded: true,
+      icon: const Icon(Icons.arrow_drop_down, size: 18),
+      style: const TextStyle(color: Colors.black87, fontSize: 11),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: const Color(0xFFE2DDDD),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
+        ),
+        errorStyle: const TextStyle(height: 0.7, fontSize: 9),
+      ),
+      hint: Text(
+        lecturerOptions.isEmpty ? 'No lecturer found' : 'Select lecturer',
+        overflow: TextOverflow.ellipsis,
+      ),
+      items: labels
+          .map((label) => DropdownMenuItem(
+                value: label,
+                child: Text(label, overflow: TextOverflow.ellipsis),
+              ))
+          .toList(),
+      validator: (value) => value == null ? 'Required' : null,
+      onChanged: labels.isEmpty
+          ? null
+          : (value) {
+              if (value != null) onChanged(value);
+            },
     );
   }
 }

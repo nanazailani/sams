@@ -14,8 +14,8 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
 
-  static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
-  //static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  //static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
+  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
 
 
   final TextEditingController _searchController = TextEditingController();
@@ -100,13 +100,20 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
   }
 
   // Approve or reject ALL subjects of a student at once
-  Future<void> _updateStudentStatus(Map<String, dynamic> student, String status) async {
+  Future<void> _updateStudentStatus(
+    Map<String, dynamic> student,
+    String status, {
+    String? rejectionReason,
+  }) async {
     final studentId = student['student_id'];
     try {
       final response = await http.post(
         Uri.parse('$_apiBaseUrl/subject-approvals/student/$studentId/status'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: jsonEncode({'status': status}),
+        body: jsonEncode({
+          'status': status,
+          if (rejectionReason != null) 'rejection_reason': rejectionReason,
+        }),
       ).timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
@@ -122,6 +129,80 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
       if (!mounted) return;
       _showSnack('Error: $e', isError: true);
     }
+  }
+
+  Future<void> _rejectStudent(Map<String, dynamic> student) async {
+    final reason = await _askRejectionReason();
+    if (reason == null) return;
+
+    await _updateStudentStatus(
+      student,
+      'Rejected',
+      rejectionReason: reason,
+    );
+  }
+
+  Future<String?> _askRejectionReason() async {
+    final controller = TextEditingController();
+
+    final reason = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        String? errorText;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Rejection Reason'),
+              content: TextField(
+                controller: controller,
+                minLines: 3,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  hintText: 'Write the reason for rejection',
+                  errorText: errorText,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final value = controller.text.trim();
+                    if (value.isEmpty) {
+                      setDialogState(() => errorText = 'Reason is required');
+                      return;
+                    }
+                    Navigator.pop(dialogContext, value);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                  ),
+                  child: const Text('Reject'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+    return reason;
   }
 
   Future<void> _openStudentSubjectsDialog(Map<String, dynamic> student) async {
@@ -165,7 +246,7 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
         },
         onRejectAll: () async {
           Navigator.pop(ctx);
-          await _updateStudentStatus(student, 'Rejected');
+          await _rejectStudent(student);
         },
       ),
     );
@@ -287,7 +368,7 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
                                   student: student,
                                   onViewSubjects: () => _openStudentSubjectsDialog(student),
                                   onApprove: () => _updateStudentStatus(student, 'Approved'),
-                                  onReject: () => _updateStudentStatus(student, 'Rejected'),
+                                  onReject: () => _rejectStudent(student),
                                 ),
                               ),
                             ),

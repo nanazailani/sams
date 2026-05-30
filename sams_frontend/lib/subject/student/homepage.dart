@@ -25,8 +25,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
   static const _backgroundColor = Color(0xFFF3F1F2);
   static const _semester = 'SEMESTER II ACADEMIC SESSION 2025/2026';
 
-  static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
-  //static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  //static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
+  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
 
 
   final TextEditingController _searchController = TextEditingController();
@@ -41,6 +41,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
   List<Map<String, dynamic>> _filteredSubjects = [];
   List<Map<String, dynamic>> _registeredSubjects = [];
   bool _isLoadingRegisteredSubjects = false;
+  String? _registeredSubjectsError;
+  bool _hasShownRejectionNotice = false;
 
   @override
   void initState() {
@@ -89,6 +91,7 @@ class _StudentHomepageState extends State<StudentHomepage> {
     await Future.wait([
       _fetchStudentInfo(),
       _fetchSubjects(),
+      _fetchRegisteredSubjects(),
     ]);
 
     if (mounted) {
@@ -156,6 +159,7 @@ class _StudentHomepageState extends State<StudentHomepage> {
           'credit_hour': item['credit_hour'] ?? item['credits'] ?? 0,
           'instructors': item['instructors'] is List ? item['instructors'] : [],
           'is_registered': item['is_registered'] == true,
+          'rejection_reason': item['rejection_reason']?.toString(),
         };
       }).toList();
 
@@ -163,6 +167,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
         _subjects = subjects;
         _filteredSubjects = List.from(subjects);
       });
+
+      _showRejectionNoticeIfNeeded(subjects);
     } catch (e) {
       debugPrint('Subjects error: $e');
       if (!mounted) return;
@@ -171,6 +177,47 @@ class _StudentHomepageState extends State<StudentHomepage> {
         _errorMessage = 'Cannot connect to backend at 127.0.0.1:8000.';
       });
     }
+  }
+
+  void _showRejectionNoticeIfNeeded(List<Map<String, dynamic>> subjects) {
+    if (_hasShownRejectionNotice) return;
+
+    final rejectedSubjects = subjects.where((subject) {
+      final reason = subject['rejection_reason']?.toString().trim() ?? '';
+      return reason.isNotEmpty;
+    }).toList();
+
+    if (rejectedSubjects.isEmpty) return;
+    _hasShownRejectionNotice = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Subject Registration Rejected'),
+          content: Text(
+            'Reason: ${rejectedSubjects.first['rejection_reason']?.toString() ?? ''}',
+            style: const TextStyle(fontSize: 13, height: 1.35),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+                elevation: 0,
+              ),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   void _filterSubjects() {
@@ -185,7 +232,7 @@ class _StudentHomepageState extends State<StudentHomepage> {
   }
 
   int get _registeredCreditHours {
-    return _subjects.where((subject) => subject['is_registered'] == true).fold(
+    return _registeredSubjects.fold(
       0,
       (total, subject) {
         final credit = int.tryParse(subject['credit_hour'].toString()) ?? 0;
@@ -197,7 +244,10 @@ class _StudentHomepageState extends State<StudentHomepage> {
   Future<void> _fetchRegisteredSubjects() async {
     if (_studentId == 0) return;
 
-    setState(() => _isLoadingRegisteredSubjects = true);
+    setState(() {
+      _isLoadingRegisteredSubjects = true;
+      _registeredSubjectsError = null;
+    });
     try {
       final response = await http
           .get(Uri.parse('$_apiBaseUrl/students/$_studentId/registered-subjects'))
@@ -217,9 +267,18 @@ class _StudentHomepageState extends State<StudentHomepage> {
       } else {
         debugPrint('Registered subjects failed: ${response.statusCode}');
         debugPrint(response.body);
+        setState(() {
+          _registeredSubjects = [];
+          _registeredSubjectsError = 'Unable to load registered subjects.';
+        });
       }
     } catch (e) {
       debugPrint('Registered subjects error: $e');
+      if (!mounted) return;
+      setState(() {
+        _registeredSubjects = [];
+        _registeredSubjectsError = 'Unable to load registered subjects.';
+      });
     } finally {
       if (mounted) {
         setState(() => _isLoadingRegisteredSubjects = false);
@@ -391,6 +450,15 @@ class _StudentHomepageState extends State<StudentHomepage> {
                                   color: _primaryColor,
                                 ),
                               )
+                            : _registeredSubjectsError != null
+                                ? Center(
+                                    child: Text(
+                                      _registeredSubjectsError!,
+                                      style: const TextStyle(
+                                        color: Colors.red,
+                                      ),
+                                    ),
+                                  )
                             : _registeredSubjects.isEmpty
                                 ? const Center(
                                     child: Text(
@@ -767,9 +835,9 @@ class _SubjectCard extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 elevation: 0,
                 backgroundColor: const Color(0xFF35C8C6),
-                disabledBackgroundColor: Colors.grey.shade300,
+                disabledBackgroundColor: const Color(0xFFFF1010),
                 foregroundColor: Colors.white,
-                disabledForegroundColor: Colors.black54,
+                disabledForegroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),

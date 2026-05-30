@@ -18,8 +18,8 @@ class _ReportPageState extends State<ReportPage> {
   static const _primaryColor = Color(0xFF28C2C6);
   static const _secondaryColor = Color(0xFFEBDD63);
   static const _backgroundColor = Color(0xFFF8F6F6);
-  static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
-  // static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  //static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
+  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -83,7 +83,7 @@ class _ReportPageState extends State<ReportPage> {
     }).toList();
   }
 
-  Future<void> _downloadStudentList(Map<String, dynamic> subject) async {
+  Future<void> _openStudentListOptions(Map<String, dynamic> subject) async {
     final subjectId = subject['id'];
     if (subjectId == null || _downloadingSubjectId != null) return;
 
@@ -91,8 +91,86 @@ class _ReportPageState extends State<ReportPage> {
 
     try {
       final response = await http
-          .get(Uri.parse('$_apiBaseUrl/subjects/$subjectId/registered-students'))
+          .get(Uri.parse('$_apiBaseUrl/subjects/$subjectId'))
           .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode != 200) {
+        _showSnack('Failed to load section list', isError: true);
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      final slots = _reportSlotsFromSubject(Map<String, dynamic>.from(data));
+
+      if (slots.isEmpty) {
+        _showSnack('No section or tutorial/lab found', isError: true);
+        return;
+      }
+
+      setState(() => _downloadingSubjectId = null);
+      if (!mounted) return;
+
+      final selectedSlot = await showDialog<_ReportSlot>(
+        context: context,
+        builder: (dialogContext) => _ReportSlotDialog(
+          subject: subject,
+          slots: slots,
+          onSelected: (slot) {
+            Navigator.pop(dialogContext, slot);
+          },
+        ),
+      );
+
+      if (selectedSlot != null) {
+        await _downloadStudentList(subject, selectedSlot);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Error: $e', isError: true);
+    } finally {
+      if (mounted && _downloadingSubjectId == int.tryParse(subjectId.toString())) {
+        setState(() => _downloadingSubjectId = null);
+      }
+    }
+  }
+
+  List<_ReportSlot> _reportSlotsFromSubject(Map<String, dynamic> subject) {
+    final rawSections = subject['sections'] is List ? subject['sections'] as List : [];
+    final rawTutorials = subject['tutorials'] is List ? subject['tutorials'] as List : [];
+
+    final sections = rawSections
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .map((item) => _ReportSlot.fromMap(item, mode: 'L'))
+        .where((slot) => slot.section.isNotEmpty)
+        .toList();
+    final tutorials = rawTutorials
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .map((item) => _ReportSlot.fromMap(item, mode: 'B'))
+        .where((slot) => slot.section.isNotEmpty)
+        .toList();
+
+    return [...sections, ...tutorials];
+  }
+
+  Future<void> _downloadStudentList(
+    Map<String, dynamic> subject,
+    _ReportSlot slot,
+  ) async {
+    final subjectId = subject['id'];
+    if (subjectId == null || _downloadingSubjectId != null) return;
+
+    setState(() => _downloadingSubjectId = int.tryParse(subjectId.toString()));
+
+    try {
+      final uri = Uri.parse(
+        '$_apiBaseUrl/subjects/$subjectId/registered-students',
+      ).replace(queryParameters: {
+        'mode': slot.mode,
+        'section': slot.section,
+      });
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
 
@@ -107,12 +185,13 @@ class _ReportPageState extends State<ReportPage> {
           .map<Map<String, dynamic>>((item) => Map<String, dynamic>.from(item))
           .toList();
 
-      final bytes = await _buildStudentListPdf(subject, students);
+      final bytes = await _buildStudentListPdf(subject, students, slot);
       final code = _safeFileName(subject['code']?.toString() ?? 'subject');
+      final slotName = _safeFileName(slot.section);
 
       await Printing.sharePdf(
         bytes: bytes,
-        filename: '${code}_student_list.pdf',
+        filename: '${code}_${slotName}_student_list.pdf',
       );
     } catch (e) {
       if (!mounted) return;
@@ -125,6 +204,7 @@ class _ReportPageState extends State<ReportPage> {
   Future<Uint8List> _buildStudentListPdf(
     Map<String, dynamic> subject,
     List<Map<String, dynamic>> students,
+    _ReportSlot slot,
   ) async {
     final document = pw.Document();
     final code = subject['code']?.toString() ?? '-';
@@ -142,6 +222,7 @@ class _ReportPageState extends State<ReportPage> {
           pw.SizedBox(height: 8),
           pw.Text('Subject Code: $code'),
           pw.Text('Course Name: ${name.toUpperCase()}'),
+          pw.Text('${slot.typeLabel}: ${slot.section}'),
           pw.SizedBox(height: 18),
           pw.TableHelper.fromTextArray(
             headers: const [
@@ -153,7 +234,7 @@ class _ReportPageState extends State<ReportPage> {
             ],
             data: students.isEmpty
                 ? [
-                    ['-', 'No registered student', '-', '-', '-']
+                    ['-', 'No Registered Student', '-', '-', '-']
                   ]
                 : List.generate(students.length, (index) {
                     final student = students[index];
@@ -254,7 +335,7 @@ class _ReportPageState extends State<ReportPage> {
                         isLoading: _isLoading,
                         subjects: _filteredSubjects,
                         downloadingSubjectId: _downloadingSubjectId,
-                        onStudentListPressed: _downloadStudentList,
+                        onStudentListPressed: _openStudentListOptions,
                       ),
                     ],
                   ),
@@ -264,6 +345,113 @@ class _ReportPageState extends State<ReportPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ReportSlot {
+  final String mode;
+  final String section;
+  final String day;
+  final String time;
+  final String location;
+
+  const _ReportSlot({
+    required this.mode,
+    required this.section,
+    required this.day,
+    required this.time,
+    required this.location,
+  });
+
+  factory _ReportSlot.fromMap(Map<String, dynamic> item, {required String mode}) {
+    return _ReportSlot(
+      mode: mode,
+      section: item['section']?.toString() ?? '',
+      day: item['day']?.toString() ?? '',
+      time: item['time']?.toString() ?? '',
+      location: item['location']?.toString() ?? '',
+    );
+  }
+
+  String get typeLabel => mode == 'B' ? 'Tutorial/Lab' : 'Section';
+
+  String get subtitle {
+    final details = [day, time, location]
+        .where((item) => item.trim().isNotEmpty)
+        .join(' | ');
+    return details.isEmpty ? typeLabel : details;
+  }
+}
+
+class _ReportSlotDialog extends StatelessWidget {
+  final Map<String, dynamic> subject;
+  final List<_ReportSlot> slots;
+  final ValueChanged<_ReportSlot> onSelected;
+
+  const _ReportSlotDialog({
+    required this.subject,
+    required this.slots,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final code = subject['code']?.toString() ?? '';
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        'Student List - $code',
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF28C2C6),
+        ),
+      ),
+      content: SizedBox(
+        width: 360,
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: slots.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final slot = slots[index];
+
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                slot.mode == 'B'
+                    ? Icons.science_outlined
+                    : Icons.menu_book_outlined,
+                color: const Color(0xFF28C2C6),
+              ),
+              title: Text(
+                '${slot.typeLabel}: ${slot.section}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Text(
+                slot.subtitle,
+                style: const TextStyle(fontSize: 11),
+              ),
+              onTap: () => onSelected(slot),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Colors.black54),
+          ),
+        ),
+      ],
     );
   }
 }

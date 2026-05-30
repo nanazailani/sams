@@ -22,6 +22,7 @@ Route::get('/subject-approvals/{studentId}/subjects', [RegistrationController::c
 Route::post('/subject-approvals/registrations/{registrationId}/status', [RegistrationController::class, 'updateRegistrationStatus']);
 Route::post('/subject-approvals/student/{studentId}/status', [RegistrationController::class, 'updateRegistrationStatus']); // ✅ NEW
 Route::get('/subjects/{id}', [RegistrationController::class, 'show']);
+Route::put('/subjects/{id}', [RegistrationController::class, 'update']);
 Route::delete('/subjects/{id}', [RegistrationController::class, 'destroy']);
 
 //nana

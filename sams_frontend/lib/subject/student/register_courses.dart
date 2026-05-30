@@ -23,8 +23,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
   static const _backgroundColor = Color(0xFFF3F1F2);
   static const _semester = 'SEMESTER II ACADEMIC SESSION 2025/2026';
 
-  static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
-  //static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  //static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
+  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
 
 
   int _studentId = 0;
@@ -33,12 +33,16 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
   String _name = '-';
   String _programme = '-';
   String _advisor = '-';
+  int _registeredCreditHours = 0;
   Map<String, dynamic> _subject = {};
   List<Map<String, dynamic>> _sections = [];
   List<Map<String, dynamic>> _tutorials = [];
   List<Map<String, dynamic>> _timetable = [];
+  List<Map<String, dynamic>> _registeredSubjects = [];
   String? _selectedSection;
   String? _selectedTutorial;
+  bool _isLoadingRegisteredSubjects = false;
+  String? _registeredSubjectsError;
 
   @override
   void initState() {
@@ -60,6 +64,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     await Future.wait([
       _fetchStudentInfo(),
       _fetchSubjectDetail(),
+      _fetchRegisteredCreditHours(),
     ]);
 
     if (mounted) {
@@ -87,7 +92,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
   }
 
   Future<void> _fetchSubjectDetail() async {
-    final id = widget.subject['id'];
+    final id = _subject['id'] ?? widget.subject['id'];
     if (id == null) return;
 
     try {
@@ -111,27 +116,350 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
       final savedTutorial = widget.subject['tutorial_lab']?.toString();
       final sectionNames =
           sectionOptions.map((item) => item['section'].toString()).toList();
-      final tutorialNames =
-          tutorialOptions.map((item) => item['section'].toString()).toList();
+      final selectedSection = sectionNames.contains(savedSection)
+          ? savedSection
+          : (sectionOptions.isNotEmpty ? sectionOptions.first['section']?.toString() : null);
+      final matchingTutorialOptions = _matchingTutorialsForSection(
+        tutorialOptions,
+        selectedSection,
+      );
+      final tutorialNames = matchingTutorialOptions
+          .map((item) => item['section'].toString())
+          .toList();
 
       setState(() {
         _subject = Map<String, dynamic>.from(data);
         _sections = sectionOptions;
         _tutorials = tutorialOptions;
         _timetable = timetable;
-        _selectedSection = sectionNames.contains(savedSection)
-            ? savedSection
-            : (sectionOptions.isNotEmpty ? sectionOptions.first['section'] : null);
+        _selectedSection = selectedSection;
         _selectedTutorial = tutorialNames.contains(savedTutorial)
             ? savedTutorial
-            : (tutorialOptions.isNotEmpty ? tutorialOptions.first['section'] : null);
+            : (matchingTutorialOptions.isNotEmpty
+                ? matchingTutorialOptions.first['section']?.toString()
+                : null);
       });
     } catch (_) {}
+  }
+
+  Future<void> _fetchRegisteredCreditHours() async {
+    if (_studentId == 0) return;
+
+    try {
+      final response = await http
+          .get(Uri.parse('$_apiBaseUrl/students/$_studentId/registered-subjects'))
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted || response.statusCode != 200) return;
+
+      final List data = jsonDecode(response.body);
+      final total = data.fold<int>(0, (sum, subject) {
+        final credit = int.tryParse(
+              (subject['credit_hour'] ?? subject['credits'] ?? 0).toString(),
+            ) ??
+            0;
+        return sum + credit;
+      });
+
+      setState(() => _registeredCreditHours = total);
+    } catch (_) {}
+  }
+
+  Future<void> _fetchRegisteredSubjects() async {
+    if (_studentId == 0) return;
+
+    setState(() {
+      _isLoadingRegisteredSubjects = true;
+      _registeredSubjectsError = null;
+    });
+
+    try {
+      final response = await http
+          .get(Uri.parse('$_apiBaseUrl/students/$_studentId/registered-subjects'))
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        setState(() {
+          _registeredSubjects = data
+              .map<Map<String, dynamic>>(
+                (item) => Map<String, dynamic>.from(item),
+              )
+              .toList();
+        });
+      } else {
+        setState(() {
+          _registeredSubjects = [];
+          _registeredSubjectsError = 'Unable to load registered subjects.';
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _registeredSubjects = [];
+        _registeredSubjectsError = 'Unable to load registered subjects.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingRegisteredSubjects = false);
+      }
+    }
+  }
+
+  Future<void> _removeRegisteredSubject(Map<String, dynamic> subject) async {
+    if (_studentId == 0) return;
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse(
+              '$_apiBaseUrl/students/$_studentId/registered-subjects/${subject['id']}',
+            ),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        await Future.wait([
+          _fetchRegisteredSubjects(),
+          _fetchRegisteredCreditHours(),
+        ]);
+      } else {
+        final data = jsonDecode(response.body);
+        _showSnack(data['message'] ?? 'Failed to remove subject', isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Error: $e', isError: true);
+    }
+  }
+
+  Future<void> _clearRegisteredSubjects() async {
+    if (_studentId == 0 || _registeredSubjects.isEmpty) return;
+
+    try {
+      final response = await http
+          .delete(Uri.parse('$_apiBaseUrl/students/$_studentId/registered-subjects'))
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        await Future.wait([
+          _fetchRegisteredSubjects(),
+          _fetchRegisteredCreditHours(),
+        ]);
+      } else {
+        final data = jsonDecode(response.body);
+        _showSnack(data['message'] ?? 'Failed to clear subjects', isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Error: $e', isError: true);
+    }
+  }
+
+  Future<void> _openRegisteredSubjectsSheet() async {
+    await _fetchRegisteredSubjects();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> refreshSheet() async {
+              await _fetchRegisteredSubjects();
+              await _fetchRegisteredCreditHours();
+              if (context.mounted) {
+                setSheetState(() {});
+              }
+            }
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.48,
+              minChildSize: 0.28,
+              maxChildSize: 0.78,
+              builder: (context, scrollController) {
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF9AA3AF),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(32, 18, 24, 8),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'My Subject',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _registeredSubjects.isEmpty
+                                  ? null
+                                  : () async {
+                                      await _clearRegisteredSubjects();
+                                      await refreshSheet();
+                                    },
+                              icon: const Icon(Icons.delete_outline, size: 14),
+                              label: const Text('Clear Subject'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.black54,
+                                textStyle: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: _isLoadingRegisteredSubjects
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  color: _primaryColor,
+                                ),
+                              )
+                            : _registeredSubjectsError != null
+                                ? Center(
+                                    child: Text(
+                                      _registeredSubjectsError!,
+                                      style: const TextStyle(color: Colors.red),
+                                    ),
+                                  )
+                                : _registeredSubjects.isEmpty
+                                    ? const Center(
+                                        child: Text(
+                                          'No registered subject yet.',
+                                          style: TextStyle(color: Colors.black54),
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        controller: scrollController,
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          18,
+                                        ),
+                                        itemCount: _registeredSubjects.length,
+                                        itemBuilder: (context, index) {
+                                          final subject =
+                                              _registeredSubjects[index];
+                                          return _RegisteredSubjectCard(
+                                            subject: subject,
+                                            onUpdate: () {
+                                              Navigator.pop(sheetContext);
+                                              setState(() {
+                                                _subject =
+                                                    Map<String, dynamic>.from(
+                                                  subject,
+                                                );
+                                              });
+                                              _fetchSubjectDetail();
+                                            },
+                                            onRemove: () async {
+                                              await _removeRegisteredSubject(
+                                                subject,
+                                              );
+                                              await refreshSheet();
+                                            },
+                                          );
+                                        },
+                                      ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : _primaryColor,
+      ),
+    );
   }
 
   List<Map<String, dynamic>> _listFrom(dynamic value) {
     if (value is! List) return [];
     return value.map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  List<Map<String, dynamic>> get _matchingTutorials {
+    return _matchingTutorialsForSection(_tutorials, _selectedSection);
+  }
+
+  List<Map<String, dynamic>> _matchingTutorialsForSection(
+    List<Map<String, dynamic>> tutorials,
+    String? section,
+  ) {
+    final sectionPrefix = _sectionPrefix(section);
+    if (sectionPrefix.isEmpty) return tutorials;
+
+    return tutorials.where((item) {
+      return _sectionPrefix(item['section']?.toString()) == sectionPrefix;
+    }).toList();
+  }
+
+  String _sectionPrefix(String? value) {
+    final match = RegExp(r'^(\d+)').firstMatch((value ?? '').trim());
+    if (match == null) return '';
+    return int.parse(match.group(1)!).toString().padLeft(2, '0');
+  }
+
+  void _setSelectedSection(String? value) {
+    final matchingTutorials = _matchingTutorialsForSection(_tutorials, value);
+    final matchingTutorialNames =
+        matchingTutorials.map((item) => item['section']?.toString()).toList();
+
+    setState(() {
+      _selectedSection = value;
+      if (!matchingTutorialNames.contains(_selectedTutorial)) {
+        _selectedTutorial = matchingTutorials.isEmpty
+            ? null
+            : matchingTutorials.first['section']?.toString();
+      }
+    });
+  }
+
+  List<_SelectOption> _optionsFor(List<Map<String, dynamic>> items) {
+    return items.map((item) {
+      final section = item['section']?.toString() ?? '';
+      final remaining = item['remaining_capacity']?.toString();
+      final label = remaining == null || remaining.isEmpty
+          ? section
+          : '$section   Remaining: $remaining';
+
+      return _SelectOption(value: section, label: label);
+    }).toList();
   }
 
   Future<void> _confirmRegistration() async {
@@ -213,6 +541,25 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
 
   int get _creditHour {
     return int.tryParse((_subject['credit_hour'] ?? 0).toString()) ?? 0;
+  }
+
+  bool get _hasExamination {
+    final value = _subject['examination'];
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+
+    final text = value?.toString().toLowerCase().trim() ?? '';
+    return text == '1' || text == 'true' || text == 'yes';
+  }
+
+  String get _examinationText {
+    if (!_hasExamination) return 'Examination - NO';
+
+    final date = _subject['exam_date']?.toString().trim() ?? '';
+    final period = _subject['exam_period']?.toString().trim() ?? '';
+    final details = [date, period].where((item) => item.isNotEmpty).join(' ');
+
+    return details.isEmpty ? 'Examination - YES' : 'Examination - YES ($details)';
   }
 
   @override
@@ -301,6 +648,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
         : <String>[];
     final timetable =
         _timetable.isNotEmpty ? _timetable : [..._sections, ..._tutorials];
+    final matchingTutorials = _matchingTutorials;
 
     return Container(
       width: double.infinity,
@@ -338,10 +686,10 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
               ),
             ),
           const SizedBox(height: 3),
-          const _DetailLine(
+          _DetailLine(
             icon: Icons.article_outlined,
-            iconColor: Color(0xFF8B8F99),
-            text: 'Examination - NO',
+            iconColor: const Color(0xFF8B8F99),
+            text: _examinationText,
             highlightLastWord: true,
           ),
           const SizedBox(height: 24),
@@ -351,15 +699,15 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
             label: 'Section:',
             value: _selectedSection,
             hint: 'Select',
-            items: _sections.map((item) => item['section'].toString()).toList(),
-            onChanged: (value) => setState(() => _selectedSection = value),
+            items: _optionsFor(_sections),
+            onChanged: _setSelectedSection,
           ),
           const SizedBox(height: 12),
           _SelectRow(
             label: 'Tutorial/Lab:',
             value: _selectedTutorial,
             hint: 'Select',
-            items: _tutorials.map((item) => item['section'].toString()).toList(),
+            items: _optionsFor(matchingTutorials),
             onChanged: (value) => setState(() => _selectedTutorial = value),
           ),
           const SizedBox(height: 26),
@@ -403,36 +751,53 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
       color: _primaryColor,
       child: Row(
         children: [
-          const SizedBox(width: 20),
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Icon(Icons.school, size: 30, color: Colors.black87),
-              Positioned(
-                right: -7,
-                top: -5,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.black,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Text(
-                    '0',
-                    style: TextStyle(color: Colors.white, fontSize: 8),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const Expanded(
-            child: Center(
-              child: Text(
-                'CREDIT HOURS: 0',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
+          Expanded(
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _openRegisteredSubjectsSheet,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 20),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.school,
+                            size: 30, color: Colors.black87),
+                        Positioned(
+                          right: -7,
+                          top: -5,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.black,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              _registeredCreditHours.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'CREDIT HOURS: $_registeredCreditHours',
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -530,7 +895,7 @@ class _SelectRow extends StatelessWidget {
   final String label;
   final String? value;
   final String hint;
-  final List<String> items;
+  final List<_SelectOption> items;
   final ValueChanged<String?> onChanged;
 
   const _SelectRow({
@@ -556,7 +921,8 @@ class _SelectRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: DropdownButtonFormField<String>(
-            initialValue: items.contains(value) ? value : null,
+            initialValue:
+                items.any((item) => item.value == value) ? value : null,
             hint: Text(hint, style: TextStyle(color: Colors.grey.shade500)),
             isExpanded: true,
             icon: const SizedBox.shrink(),
@@ -571,7 +937,13 @@ class _SelectRow extends StatelessWidget {
               ),
             ),
             items: items
-                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                .map((item) => DropdownMenuItem(
+                      value: item.value,
+                      child: Text(
+                        item.label,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ))
                 .toList(),
             onChanged: items.isEmpty ? null : onChanged,
           ),
@@ -604,6 +976,125 @@ class _InfoCell extends StatelessWidget {
   }
 }
 
+class _RegisteredSubjectCard extends StatelessWidget {
+  final Map<String, dynamic> subject;
+  final VoidCallback onUpdate;
+  final Future<void> Function() onRemove;
+
+  const _RegisteredSubjectCard({
+    required this.subject,
+    required this.onUpdate,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final code = subject['code']?.toString() ?? '';
+    final name = subject['name']?.toString().toUpperCase() ?? '';
+    final credit = subject['credit_hour']?.toString() ?? '0';
+    final section = subject['section']?.toString() ?? '-';
+    final tutorialLab = subject['tutorial_lab']?.toString() ?? '-';
+    final timeSummary = subject['time_summary']?.toString() ?? '-';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F7F7),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 54,
+            child: Center(
+              child: Icon(Icons.school, color: Colors.black87, size: 38),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$code - $name',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Credit Hours: $credit | Section: $section/$tutorialLab',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 10,
+                    height: 1.15,
+                  ),
+                ),
+                Text(
+                  'Time: $timeSummary',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 10,
+                    height: 1.15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            children: [
+              TextButton.icon(
+                onPressed: onRemove,
+                icon: const Icon(Icons.delete_outline, size: 10),
+                label: const Text('Remove'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.black54,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 18),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(fontSize: 8),
+                ),
+              ),
+              const SizedBox(height: 3),
+              SizedBox(
+                width: 58,
+                height: 30,
+                child: ElevatedButton(
+                  onPressed: onUpdate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF35C8C6),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Update',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DetailLine extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -619,9 +1110,6 @@ class _DetailLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final parts = text.split(' ');
-    final last = parts.isEmpty ? '' : parts.removeLast();
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -635,17 +1123,9 @@ class _DetailLine extends StatelessWidget {
                       color: Colors.black87,
                       fontSize: 11,
                       height: 1.2,
+                      fontWeight: FontWeight.w800,
                     ),
-                    children: [
-                      TextSpan(text: '${parts.join(' ')} '),
-                      TextSpan(
-                        text: last,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                    children: _highlightExamAnswerSpans(text),
                   ),
                 )
               : Text(
@@ -654,10 +1134,42 @@ class _DetailLine extends StatelessWidget {
                     color: Colors.black87,
                     fontSize: 11,
                     height: 1.2,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
         ),
       ],
     );
   }
+
+  List<TextSpan> _highlightExamAnswerSpans(String value) {
+    final yesIndex = value.indexOf('YES');
+    final noIndex = value.indexOf('NO');
+    final answerIndex = yesIndex == -1 ? noIndex : yesIndex;
+    final answer = yesIndex == -1 ? 'NO' : 'YES';
+
+    if (answerIndex == -1) return [TextSpan(text: value)];
+
+    return [
+      TextSpan(text: value.substring(0, answerIndex)),
+      TextSpan(
+        text: answer,
+        style: TextStyle(
+          color: answer == 'YES' ? const Color(0xFF35C8C6) : Colors.red,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      TextSpan(text: value.substring(answerIndex + answer.length)),
+    ];
+  }
+}
+
+class _SelectOption {
+  final String value;
+  final String label;
+
+  const _SelectOption({
+    required this.value,
+    required this.label,
+  });
 }

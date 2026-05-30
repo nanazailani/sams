@@ -41,6 +41,13 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
+  void _openReportPage() {
+    setState(() {
+      _currentIndex = 3;
+      _showAddCoursesPage = false;
+    });
+  }
+
   void _closeAddCoursesPage() {
     setState(() {
       _currentIndex = 1;
@@ -54,6 +61,7 @@ class _MainNavigationState extends State<MainNavigation> {
       FacultyRegistrarPage(
         onManageCoursesTap: () => _selectPage(1),
         onApprovalTap: _openApprovalPage,
+        onReportTap: _openReportPage,
       ),
       _showAddCoursesPage
           ? AddCoursesPage(onCourseSaved: _closeAddCoursesPage)
@@ -102,11 +110,13 @@ class _MainNavigationState extends State<MainNavigation> {
 class FacultyRegistrarPage extends StatelessWidget {
   final VoidCallback onManageCoursesTap;
   final VoidCallback onApprovalTap;
+  final VoidCallback onReportTap;
 
   const FacultyRegistrarPage({
     super.key,
     required this.onManageCoursesTap,
     required this.onApprovalTap,
+    required this.onReportTap,
   });
 
   Future<void> _logout(BuildContext context) async {
@@ -214,10 +224,7 @@ class FacultyRegistrarPage extends StatelessWidget {
                           title: 'Generate Report',
                           imagePath: 'images/report.png',
                           fallbackIcon: Icons.bar_chart_outlined,
-                          onTap: () => ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(
-                                  content:
-                                      Text('Generate Report coming soon'))),
+                          onTap: onReportTap,
                         ),
                       ],
                     ),

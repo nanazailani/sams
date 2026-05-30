@@ -58,11 +58,11 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
 
   try {
     final response = await http
-        .get(Uri.parse('http://10.0.2.2:8000/api/student/$id/subjects'))
+        .get(Uri.parse('http://127.0.0.1:8000/api/student/$id/subjects'))
         .timeout(const Duration(seconds: 10));
 
     final moduleResponse = await http
-        .get(Uri.parse('http://10.0.2.2:8000/api/student/$id/modules'))
+        .get(Uri.parse('http://127.0.0.1:8000/api/student/$id/modules'))
         .timeout(const Duration(seconds: 10));
 
     List data = [];
@@ -178,6 +178,7 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                                     name: item['name'] as String,
                                     attendanceEnabled: item['attendanceEnabled'] as bool,
                                     attendanceType: 'course',
+                                    canDrop: true,
                                   ),
                                 ),
                               ),
@@ -219,6 +220,7 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                                     name: item['name'] as String,
                                     attendanceEnabled: item['attendanceEnabled'] as bool,
                                     attendanceType: 'module',
+                                    canDrop: false,
                                   ),
                                 ),
                               ),
@@ -239,6 +241,7 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
     required String name,
     required bool attendanceEnabled,
     required String attendanceType,
+    required bool canDrop,
   }) {
     return Container(
       width: double.infinity,
@@ -339,9 +342,107 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
               ],
             ),
           ),
+          if (canDrop) ...[
+            const SizedBox(width: 10),
+            Align(
+              alignment: Alignment.topRight,
+              child: SizedBox(
+                width: 58,
+                height: 30,
+                child: ElevatedButton(
+                  onPressed: () => _confirmDropSubject(subjectId, code, name),
+                  style: ElevatedButton.styleFrom(
+                    elevation: 0,
+                    backgroundColor: const Color(0xFFFF2338),
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Drop',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Nunito',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDropSubject(int subjectId, String code, String name) async {
+    final shouldDrop = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Drop Subject'),
+        content: Text('Are you sure you want to drop $code - $name?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.black54),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF2338),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Drop'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDrop != true || studentId == 0) return;
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse(
+              'http://127.0.0.1:8000/api/students/$studentId/registered-subjects/$subjectId',
+            ),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Subject dropped successfully'),
+            backgroundColor: Color(0xFF67C5C4),
+          ),
+        );
+        await fetchRegisteredSubjects();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to drop subject'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Widget _buildActionButton({
