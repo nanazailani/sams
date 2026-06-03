@@ -55,8 +55,8 @@ class _ReviewSubmissionPageState extends State<ReviewSubmissionPage> {
         query['filter'] = _selectedFilter.toUpperCase();
       }
 
-      final uri = Uri.http(
-        '10.0.2.2:8000',
+      final uri = Uri.https(
+        'darkgrey-lyrebird-505549.hostingersite.com',
         '/api/pusat-adab/module-registrations',
         query,
       );

@@ -57,7 +57,11 @@ class _BookNowPageState extends State<BookNowPage> {
       }
 
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/modules').replace(
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/modules').replace(
+        
+        
+        // Uri.parse('http://10.0.2.2:8000 /api/modules').replace(
+         
           queryParameters: {
             'student_id': _studentId.toString(),
           },

@@ -49,7 +49,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
       final response = await http.get(
         Uri.parse(
           //'http://127.0.0.1:8000/api/tuition/student/$studentId/status',
-          'http://10.0.2.2:8000/api/tuition/student/$studentId/status',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/$studentId/status',
         ),
         headers: {
           'Accept': 'application/json',

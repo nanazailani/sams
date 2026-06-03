@@ -43,7 +43,7 @@ class _RecordParticipationPageState extends State<RecordParticipationPage> {
       }
 
       final response = await http.get(
-        Uri.http('10.0.2.2:8000', '/api/pusat-adab/module-registrations', query),
+        Uri.https('darkgrey-lyrebird-505549.hostingersite.com', '/api/pusat-adab/module-registrations', query),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);
@@ -476,7 +476,7 @@ class _ParticipationDetailPageState extends State<ParticipationDetailPage> {
     try {
       final response = await http.delete(
         Uri.parse(
-          'http://10.0.2.2:8000/api/pusat-adab/module-registrations/$registrationId',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/module-registrations/$registrationId',
         ),
         headers: const {'Accept': 'application/json'},
       );

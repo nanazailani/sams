@@ -55,8 +55,8 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
         query['status'] = _selectedFilter.toUpperCase();
       }
 
-      final uri = Uri.http(
-        '10.0.2.2:8000',
+      final uri = Uri.https(
+        'darkgrey-lyrebird-505549.hostingersite.com',
         '/api/pusat-adab/credit-claims',
         query,
       );
@@ -97,7 +97,11 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
       final reviewedBy = prefs.getInt('user_id');
 
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:8000/api/pusat-adab/credit-claims/$claimId/status'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/credit-claims/$claimId/status'),
+
+
+        // Uri.parse('http://10.0.2.2:8000/api/pusat-adab/credit-claims/$claimId/status'),
+          
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

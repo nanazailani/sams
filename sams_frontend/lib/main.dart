@@ -91,7 +91,8 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/api/login'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/login'),
+        //Uri.parse('http://127.0.0.1:8000/api/login'),
         //Uri.parse('http://10.62.79.61:8000/api/login'),
         //Uri.parse('http://10.0.2.2:8000/api/login'),
 

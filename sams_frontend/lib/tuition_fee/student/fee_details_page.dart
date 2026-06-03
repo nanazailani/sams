@@ -33,7 +33,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
       final response = await http.get(
         Uri.parse(
           //'http://127.0.0.1:8000/api/tuition/student/${widget.studentId}/details',
-          'http://10.0.2.2:8000/api/tuition/student/${widget.studentId}/details',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/${widget.studentId}/details',
         ),
         headers: {
           'Accept': 'application/json',

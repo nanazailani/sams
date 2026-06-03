@@ -83,9 +83,9 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
       //return 'http://127.0.0.1:8000/api';
       // return 'http://127.0.0.1:8000/api';
 
-      return 'http://10.0.2.2:8000/api';
+      return 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
     }
-    return 'http://10.0.2.2:8000/api';
+    return 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
     //return 'http://127.0.0.1:8000/api';
   }
 

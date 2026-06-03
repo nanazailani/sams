@@ -57,7 +57,7 @@ class _UploadPaymentProofPageState extends State<UploadPaymentProofPage> {
       final response = await http.get(
         Uri.parse(
           //'http://127.0.0.1:8000/api/tuition/student/${widget.studentId}/status',
-          'http://10.0.2.2:8000/api/tuition/student/${widget.studentId}/status',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/${widget.studentId}/status',
         ),
         headers: {
           'Accept': 'application/json',
@@ -115,7 +115,7 @@ class _UploadPaymentProofPageState extends State<UploadPaymentProofPage> {
       final request = http.MultipartRequest(
         'POST',
         //Uri.parse('http://127.0.0.1:8000/api/tuition/student/submit-payment'),
-        Uri.parse('http://10.0.2.2:8000/api/tuition/student/submit-payment'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/submit-payment'),
       );
 
       request.headers['Accept'] = 'application/json';

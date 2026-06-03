@@ -118,12 +118,12 @@ class _AttendancePageState extends State<AttendancePage> {
       debugPrint('FETCH SUBMISSIONS => attendanceType: ${widget.attendanceType}');
       debugPrint(
         //'FETCH SUBMISSIONS URL => http://127.0.0.1:8000/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}',
-        'FETCH SUBMISSIONS URL => http://10.0.2.2:8000/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}',
+        'FETCH SUBMISSIONS URL => https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}',
       );
       final response = await http
           .get(
             //Uri.parse('http://127.0.0.1:8000/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}'),
-            Uri.parse('http://10.0.2.2:8000/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}'),
+            Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}'),
           )
           .timeout(const Duration(seconds: 10));
       debugPrint('FETCH SUBMISSIONS status => ${response.statusCode}');
@@ -175,7 +175,7 @@ class _AttendancePageState extends State<AttendancePage> {
       final response = await http
           .post(
             //Uri.parse('http://127.0.0.1:8000/api/attendance/generate'),
-            Uri.parse('http://10.0.2.2:8000/api/attendance/generate'),
+            Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/generate'),
             headers: {
               'Content-Type': 'application/json',
             },

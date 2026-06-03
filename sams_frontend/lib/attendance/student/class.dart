@@ -58,11 +58,11 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
 
   try {
     final response = await http
-        .get(Uri.parse('http://127.0.0.1:8000/api/student/$id/subjects'))
+        .get(Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$id/subjects'))
         .timeout(const Duration(seconds: 10));
 
     final moduleResponse = await http
-        .get(Uri.parse('http://127.0.0.1:8000/api/student/$id/modules'))
+        .get(Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$id/modules'))
         .timeout(const Duration(seconds: 10));
 
     List data = [];
@@ -414,7 +414,7 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
       final response = await http
           .delete(
             Uri.parse(
-              'http://127.0.0.1:8000/api/students/$studentId/registered-subjects/$subjectId',
+              'https://darkgrey-lyrebird-505549.hostingersite.com/api/students/$studentId/registered-subjects/$subjectId',
             ),
           )
           .timeout(const Duration(seconds: 10));

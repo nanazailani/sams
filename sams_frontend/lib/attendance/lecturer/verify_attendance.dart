@@ -49,7 +49,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
           .get(
             Uri.parse(
               //'http://127.0.0.1:8000/api/attendance/${widget.classSessionId}/submissions',
-              'http://10.0.2.2:8000/api/attendance/${widget.classSessionId}/submissions',
+              'https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/${widget.classSessionId}/submissions',
             ),
           )
           .timeout(const Duration(seconds: 10));
@@ -87,7 +87,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
     try {
       final response = await http.post(
         //Uri.parse('http://127.0.0.1:8000/api/attendance/$attendanceId/status'),
-        Uri.parse('http://10.0.2.2:8000/api/attendance/$attendanceId/status'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/$attendanceId/status'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'status': status}),
       );

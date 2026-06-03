@@ -26,7 +26,7 @@ class _StudentHomepageState extends State<StudentHomepage> {
   static const _semester = 'SEMESTER II ACADEMIC SESSION 2025/2026';
 
   //static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
-  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  static const _apiBaseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
 
   final TextEditingController _searchController = TextEditingController();

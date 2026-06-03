@@ -35,7 +35,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       final response = await http.get(
         Uri.parse(
           //'http://127.0.0.1:8000/api/tuition/treasurer/payment/${widget.paymentId}',
-          'http://10.0.2.2:8000/api/tuition/treasurer/payment/${widget.paymentId}',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/payment/${widget.paymentId}',
         ),
         headers: {'Accept': 'application/json'},
       );
@@ -93,7 +93,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       final response = await http.post(
         Uri.parse(
           //'http://127.0.0.1:8000/api/tuition/treasurer/payment/${widget.paymentId}/approve',
-          'http://10.0.2.2:8000/api/tuition/treasurer/payment/${widget.paymentId}/approve',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/payment/${widget.paymentId}/approve',
         ),
         headers: {'Accept': 'application/json'},
       );
@@ -160,7 +160,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       final response = await http.post(
         Uri.parse(
           //'http://127.0.0.1:8000/api/tuition/treasurer/payment/${widget.paymentId}/reject',
-          'http://10.0.2.2:8000/api/tuition/treasurer/payment/${widget.paymentId}/reject',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/payment/${widget.paymentId}/reject',
         ),
         headers: {'Accept': 'application/json'},
         body: {

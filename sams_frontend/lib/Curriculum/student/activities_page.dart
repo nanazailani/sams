@@ -48,7 +48,10 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
 
       final response = await http.get(
         Uri.parse(
-          'http://10.0.2.2:8000/api/modules/activities?student_id=$_studentId',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/modules/activities?student_id=$_studentId',
+
+          // 'http://10.0.2.2:8000 /api/modules/activities?student_id=$_studentId',
+          
         ),
       );
 

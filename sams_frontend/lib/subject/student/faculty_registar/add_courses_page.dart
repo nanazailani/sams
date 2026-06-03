@@ -61,7 +61,7 @@ class AddCoursesPage extends StatefulWidget {
 class _AddCoursesPageState extends State<AddCoursesPage> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
-  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  static const _apiBaseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();

@@ -129,7 +129,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
             .get(
               Uri.parse(
                 //'http://127.0.0.1:8000/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
-                'http://10.0.2.2:8000/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
+                'https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
               ),
             )
             .timeout(const Duration(seconds: 10));
@@ -306,7 +306,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
 
       final response = await http.post(
         //Uri.parse('http://127.0.0.1:8000/api/attendance/submit'),
-        Uri.parse('http://10.0.2.2:8000/api/attendance/submit'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/submit'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

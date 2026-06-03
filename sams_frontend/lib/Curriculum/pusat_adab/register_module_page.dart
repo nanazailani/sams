@@ -85,7 +85,7 @@ class _RegisterModulePageState extends State<RegisterModulePage> {
 
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/modules?scope=all'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/modules?scope=all'),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);
@@ -128,7 +128,7 @@ class _RegisterModulePageState extends State<RegisterModulePage> {
   Future<void> _fetchLecturers() async {
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/lecturers'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/lecturers'),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);
@@ -187,8 +187,8 @@ class _RegisterModulePageState extends State<RegisterModulePage> {
     try {
       final isEditing = _editingModuleId != null;
       final uri = isEditing
-          ? Uri.parse('http://10.0.2.2:8000/api/pusat-adab/modules/$_editingModuleId')
-          : Uri.parse('http://10.0.2.2:8000/api/pusat-adab/modules');
+          ? Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/modules/$_editingModuleId')
+          : Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/modules');
       final body = jsonEncode({
         'code': _codeController.text.trim().toUpperCase(),
         'name': _nameController.text.trim(),
@@ -334,7 +334,7 @@ class _RegisterModulePageState extends State<RegisterModulePage> {
 
     try {
       final response = await http.delete(
-        Uri.parse('http://10.0.2.2:8000/api/pusat-adab/modules/$moduleId'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/modules/$moduleId'),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);
@@ -869,7 +869,7 @@ class _ManageModuleClassesPageState extends State<ManageModuleClassesPage> {
 
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/modules/$_moduleId/schedules?scope=all'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/modules/$_moduleId/schedules?scope=all'),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);
@@ -899,7 +899,7 @@ class _ManageModuleClassesPageState extends State<ManageModuleClassesPage> {
   Future<void> _fetchLecturers() async {
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/lecturers'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/lecturers'),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);
@@ -957,8 +957,8 @@ class _ManageModuleClassesPageState extends State<ManageModuleClassesPage> {
     try {
       final isEditing = _editingScheduleId != null;
       final uri = isEditing
-          ? Uri.parse('http://10.0.2.2:8000/api/pusat-adab/schedules/$_editingScheduleId')
-          : Uri.parse('http://10.0.2.2:8000/api/pusat-adab/modules/$_moduleId/schedules');
+          ? Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/schedules/$_editingScheduleId')
+          : Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/modules/$_moduleId/schedules');
       final body = jsonEncode({
         'class_date': _dateValue(_classDate),
         'start_time': _timeValue(_startTime),
@@ -1071,7 +1071,7 @@ class _ManageModuleClassesPageState extends State<ManageModuleClassesPage> {
 
     try {
       final response = await http.delete(
-        Uri.parse('http://10.0.2.2:8000/api/pusat-adab/schedules/$scheduleId'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/schedules/$scheduleId'),
         headers: const {'Accept': 'application/json'},
       );
       final decoded = _decodeResponse(response);

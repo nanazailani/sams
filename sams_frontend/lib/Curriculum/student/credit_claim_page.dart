@@ -45,7 +45,7 @@ class _CreditClaimPageState extends State<CreditClaimPage> {
 
       final response = await http.get(
         Uri.parse(
-          'http://10.0.2.2:8000/api/modules/credit-claims?student_id=$_studentId',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/modules/credit-claims?student_id=$_studentId',
         ),
       );
 
@@ -73,7 +73,9 @@ class _CreditClaimPageState extends State<CreditClaimPage> {
   Future<void> submitClaim(int registrationId) async {
     try {
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:8000/api/modules/credit-claims/apply'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/modules/credit-claims/apply'),
+        // Uri.parse('http://10.0.2.2:8000/api/modules/credit-claims/apply'),
+        
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

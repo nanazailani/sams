@@ -60,7 +60,7 @@ class _CourseDetailsDialog extends StatefulWidget {
 class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
-  static const _apiBaseUrl = 'http://127.0.0.1:8000/api';
+  static const _apiBaseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
@@ -902,7 +902,7 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
       final res = await http
 
           // .get(Uri.parse('http://10.0.2.2:8000/api/subjects'))
-          .get(Uri.parse('http://127.0.0.1:8000/api/subjects'))
+          .get(Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/subjects'))
 
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
@@ -952,7 +952,7 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
       final res = await http.delete(
 
         //Uri.parse('http://10.0.2.2:8000/api/subjects/$id'),
-        Uri.parse('http://127.0.0.1:8000/api/subjects/$id'),
+        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/subjects/$id'),
 
         headers: {'Accept': 'application/json'},
       );

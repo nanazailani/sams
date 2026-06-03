@@ -46,9 +46,15 @@ class _MyBookingPageState extends State<MyBookingPage> {
 
       final response = await http.get(
         Uri.parse(
-          'http://10.0.2.2:8000/api/modules/my-bookings?student_id=$_studentId',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/modules/my-bookings?student_id=$_studentId',
         ),
       );
+
+      //  final response = await http.get(
+      //   Uri.parse(
+      //     'http://10.0.2.2:8000/api/modules/my-bookings?student_id=$_studentId',
+      //   ),
+      // );
 
       final decoded = jsonDecode(response.body);
 
@@ -75,7 +81,7 @@ class _MyBookingPageState extends State<MyBookingPage> {
     try {
       final response = await http.delete(
         Uri.parse(
-          'http://10.0.2.2:8000/api/modules/bookings/$registrationId/cancel',
+          'https://darkgrey-lyrebird-505549.hostingersite.com/api/modules/bookings/$registrationId/cancel',
         ),
         headers: {'Accept': 'application/json'},
       );
