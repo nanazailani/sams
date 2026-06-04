@@ -81,3 +81,10 @@ Route::prefix('tuition')->group(function () {
     Route::post('/treasurer/payment/{paymentId}/reject', [FeeController::class, 'rejectPayment']);
     Route::get('/treasurer/records', [FeeController::class, 'getPaymentRecords']);
 });
+
+
+use App\Http\Controllers\WeekLockController;
+
+Route::get('/week-lock/status', [WeekLockController::class, 'status']);
+Route::post('/week-lock/lock',   [WeekLockController::class, 'lock']);
+Route::post('/week-lock/unlock', [WeekLockController::class, 'unlock']);

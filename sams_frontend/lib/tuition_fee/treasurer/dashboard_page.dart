@@ -22,6 +22,9 @@ class _TreasurerFeeDashboardPageState
   static const Color approvedColor = Color(0xFF00B85C);
   static const Color rejectedColor = Color(0xFFE53935);
 
+  static const String _baseUrl =
+      'https://darkgrey-lyrebird-505549.hostingersite.com/api';
+
   final TextEditingController _searchController = TextEditingController();
 
   List<dynamic> _allPayments = [];
@@ -34,6 +37,10 @@ class _TreasurerFeeDashboardPageState
     'approved_count': 0,
     'rejected_count': 0,
   };
+
+  // --- Lock state ---
+  bool _isLocked = false;
+  bool _isLockLoading = false;
 
   final List<String> _courseOptions = [
     'All',
@@ -53,6 +60,7 @@ class _TreasurerFeeDashboardPageState
   void initState() {
     super.initState();
     _fetchPendingPayments();
+    _fetchLockStatus(); // check current lock state on load
   }
 
   @override
@@ -61,18 +69,58 @@ class _TreasurerFeeDashboardPageState
     super.dispose();
   }
 
+  // --- Lock methods ---
+
+  Future<void> _fetchLockStatus() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/week-lock/status'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _isLocked = data['is_locked'] == true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Fetch lock status error: $e');
+    }
+  }
+
+  Future<void> _toggleLock() async {
+    setState(() => _isLockLoading = true);
+
+    try {
+      final endpoint = _isLocked ? 'unlock' : 'lock';
+      final response = await http
+          .post(Uri.parse('$_baseUrl/week-lock/$endpoint'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _isLocked = data['is_locked'] == true;
+        });
+        _showMessage(data['message'] ?? 'Done');
+      } else {
+        _showMessage('Failed to update lock status');
+      }
+    } catch (e) {
+      _showMessage('Error: $e');
+    } finally {
+      if (mounted) setState(() => _isLockLoading = false);
+    }
+  }
+
+  // --- Payment methods ---
+
   Future<void> _fetchPendingPayments() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // change this to your real backend URL
-
-      const String baseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
-      //const String baseUrl = 'http://127.0.0.1:8000/api';
-
-
       final queryParams = <String, String>{};
 
       if (_searchController.text.trim().isNotEmpty) {
@@ -83,7 +131,7 @@ class _TreasurerFeeDashboardPageState
         queryParams['status'] = _selectedTab;
       }
 
-      final uri = Uri.parse('$baseUrl/tuition/treasurer/pending')
+      final uri = Uri.parse('$_baseUrl/tuition/treasurer/pending')
           .replace(queryParameters: queryParams.isEmpty ? null : queryParams);
 
       final response = await http.get(uri);
@@ -148,9 +196,7 @@ class _TreasurerFeeDashboardPageState
   }
 
   int get _pendingCount => _summaryCount('pending_count');
-
   int get _approvedCount => _summaryCount('approved_count');
-
   int get _rejectedCount => _summaryCount('rejected_count');
 
   Future<void> _logout() async {
@@ -193,6 +239,49 @@ class _TreasurerFeeDashboardPageState
     }
   }
 
+  // --- Lock button widget ---
+
+  Widget _buildLockButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton.icon(
+          onPressed: _isLockLoading ? null : _toggleLock,
+          icon: _isLockLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Icon(_isLocked ? Icons.lock_open : Icons.lock),
+          label: Text(
+            _isLocked
+                ? 'Unlock Student Access'
+                : 'Lock Access (Week 5)',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isLocked ? Colors.green : Colors.red,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final payments = _filteredPayments;
@@ -208,6 +297,7 @@ class _TreasurerFeeDashboardPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header
                 Container(
                   height: 95,
                   width: double.infinity,
@@ -241,6 +331,12 @@ class _TreasurerFeeDashboardPageState
                   child: _SemesterChip(text: 'Semester 2, 2025/2026'),
                 ),
                 const SizedBox(height: 18),
+
+                // ── LOCK BUTTON ──
+                _buildLockButton(),
+                const SizedBox(height: 18),
+
+                // Stat cards
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -272,6 +368,8 @@ class _TreasurerFeeDashboardPageState
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Search
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: TextField(
@@ -279,22 +377,27 @@ class _TreasurerFeeDashboardPageState
                     onSubmitted: (_) => _fetchPendingPayments(),
                     decoration: InputDecoration(
                       hintText: 'Search Matric No.',
-                      prefixIcon: const Icon(Icons.search, color: pendingColor),
+                      prefixIcon:
+                          const Icon(Icons.search, color: pendingColor),
                       filled: true,
                       fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 14),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: const BorderSide(color: borderColor),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: primaryColor),
+                        borderSide:
+                            const BorderSide(color: primaryColor),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
+
+                // Dropdowns
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -329,6 +432,8 @@ class _TreasurerFeeDashboardPageState
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Status tabs
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -378,6 +483,8 @@ class _TreasurerFeeDashboardPageState
                   child: Divider(height: 18),
                 ),
                 const SizedBox(height: 10),
+
+                // Payment table
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -391,7 +498,8 @@ class _TreasurerFeeDashboardPageState
                     child: _isLoading
                         ? const Padding(
                             padding: EdgeInsets.all(30),
-                            child: Center(child: CircularProgressIndicator()),
+                            child: Center(
+                                child: CircularProgressIndicator()),
                           )
                         : payments.isEmpty
                             ? const Padding(
@@ -453,7 +561,8 @@ class _TreasurerFeeDashboardPageState
                                   const Divider(height: 1),
                                   ...payments.take(5).map((item) {
                                     final status =
-                                        (item['status'] ?? 'Pending').toString();
+                                        (item['status'] ?? 'Pending')
+                                            .toString();
                                     return Column(
                                       children: [
                                         const SizedBox(height: 14),
@@ -465,18 +574,23 @@ class _TreasurerFeeDashboardPageState
                                               flex: 3,
                                               child: Column(
                                                 crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
+                                                    CrossAxisAlignment
+                                                        .start,
                                                 children: [
                                                   Text(
-                                                    item['matric_no'] ?? '-',
-                                                    style: const TextStyle(
+                                                    item['matric_no'] ??
+                                                        '-',
+                                                    style:
+                                                        const TextStyle(
                                                       fontSize: 16,
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 2),
+                                                  const SizedBox(
+                                                      height: 2),
                                                   Text(
                                                     item['name'] ?? '',
-                                                    style: const TextStyle(
+                                                    style:
+                                                        const TextStyle(
                                                       fontSize: 12,
                                                       color: Colors.grey,
                                                     ),
@@ -489,29 +603,33 @@ class _TreasurerFeeDashboardPageState
                                               child: Text(
                                                 'RM ${(item['amount'] ?? 0).toString()}',
                                                 style: const TextStyle(
-                                                  fontSize: 16,
-                                                ),
+                                                    fontSize: 16),
                                               ),
                                             ),
                                             Expanded(
                                               flex: 2,
                                               child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
+                                                padding: const EdgeInsets
+                                                    .symmetric(
                                                   horizontal: 10,
                                                   vertical: 7,
                                                 ),
                                                 decoration: BoxDecoration(
-                                                  color: _statusBg(status),
+                                                  color:
+                                                      _statusBg(status),
                                                   borderRadius:
-                                                      BorderRadius.circular(16),
+                                                      BorderRadius.circular(
+                                                          16),
                                                 ),
                                                 child: Text(
                                                   status.toUpperCase(),
-                                                  textAlign: TextAlign.center,
+                                                  textAlign:
+                                                      TextAlign.center,
                                                   style: TextStyle(
-                                                    color: _statusText(status),
-                                                    fontWeight: FontWeight.w700,
+                                                    color: _statusText(
+                                                        status),
+                                                    fontWeight:
+                                                        FontWeight.w700,
                                                     fontSize: 12,
                                                   ),
                                                 ),
@@ -530,27 +648,28 @@ class _TreasurerFeeDashboardPageState
                                                         MaterialPageRoute(
                                                           builder: (_) =>
                                                               VerifyStudentPaymentPage(
-                                                            paymentId:
-                                                                int.tryParse(
-                                                                      item['id']
-                                                                          .toString(),
-                                                                    ) ??
-                                                                    0,
+                                                            paymentId: int.tryParse(
+                                                                    item['id']
+                                                                        .toString()) ??
+                                                                0,
                                                           ),
                                                         ),
                                                       );
                                                     },
-                                                    style: ElevatedButton.styleFrom(
+                                                    style: ElevatedButton
+                                                        .styleFrom(
                                                       backgroundColor:
                                                           primaryColor,
                                                       shape:
                                                           RoundedRectangleBorder(
                                                         borderRadius:
-                                                            BorderRadius.circular(
-                                                                20),
+                                                            BorderRadius
+                                                                .circular(
+                                                                    20),
                                                       ),
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
+                                                      padding:
+                                                          const EdgeInsets
+                                                              .symmetric(
                                                         horizontal: 16,
                                                       ),
                                                       elevation: 0,
@@ -579,6 +698,8 @@ class _TreasurerFeeDashboardPageState
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Pagination
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -754,12 +875,14 @@ class _StatusTab extends StatelessWidget {
                 text,
                 style: TextStyle(
                   color: active ? color : Colors.black87,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight:
+                      active ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
               const SizedBox(width: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(10),
