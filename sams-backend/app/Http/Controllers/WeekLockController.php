@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\WeekLock;
-use App\Models\TuitionFee; 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WeekLockController extends Controller
 {
@@ -18,17 +18,32 @@ class WeekLockController extends Controller
         $studentBlocked = false;
 
         if ($isLocked) {
-            $matricNo = $request->query('matric_no');
+            $studentId = $request->query('student_id');
 
-            if ($matricNo) {
-                // Check if student has completed payment
-                // Adjust the model/column names to match YOUR database
-                $paid = TuitionFee::where('matric_no', $matricNo)
-                    ->where('status', 'approved')
-                    ->exists();
+            if ($studentId) {
+                // Get tuition_fee_id from this student's payments
+                $payment = DB::table('payments')
+                    ->where('student_id', $studentId)
+                    ->first();
 
-                // Student is blocked only if locked AND not fully paid
-                $studentBlocked = !$paid;
+                $totalFee = 0;
+                if ($payment) {
+                    $tuitionFee = DB::table('tuition_fees')
+                        ->where('id', $payment->tuition_fee_id)
+                        ->first();
+                    if ($tuitionFee) {
+                        $totalFee = $tuitionFee->tuition_fee + $tuitionFee->hostel_fee;
+                    }
+                }
+
+                // Sum all approved payments for this student
+                $totalPaid = DB::table('payments')
+                    ->where('student_id', $studentId)
+                    ->where('status', 'Approved')
+                    ->sum('amount');
+
+                // Block if not fully paid
+                $studentBlocked = $totalPaid < $totalFee;
             }
         }
 
