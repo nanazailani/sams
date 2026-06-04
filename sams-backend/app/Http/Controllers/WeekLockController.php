@@ -9,50 +9,49 @@ use Illuminate\Support\Facades\DB;
 class WeekLockController extends Controller
 {
     // GET /api/week-lock/status
-    // Returns the global lock status + whether this specific student is blocked
     public function status(Request $request)
-    {
-        $lock = WeekLock::first();
-        $isLocked = $lock ? $lock->is_locked : false;
+{
+    $lock = WeekLock::first();
+    $isLocked = $lock ? $lock->is_locked : false;
 
-        $studentBlocked = false;
+    $studentBlocked = false;
 
-        if ($isLocked) {
-            $studentId = $request->query('student_id');
+    if ($isLocked) {
+        $studentId = $request->query('student_id');
 
-            if ($studentId) {
-                // Get tuition_fee_id from this student's payments
-                $payment = DB::table('payments')
-                    ->where('student_id', $studentId)
+        if ($studentId) {
+            $student = DB::table('students')
+                ->where('id', $studentId)
+                ->first();
+
+            $totalFee = 0;
+            if ($student) {
+                $tuitionFee = DB::table('tuition_fees')
+                    ->where('programme', $student->programme)
                     ->first();
 
-                $totalFee = 0;
-                if ($payment) {
-                    $tuitionFee = DB::table('tuition_fees')
-                        ->where('id', $payment->tuition_fee_id)
-                        ->first();
-                    if ($tuitionFee) {
-                        $totalFee = $tuitionFee->tuition_fee + $tuitionFee->hostel_fee;
-                    }
+                if ($tuitionFee) {
+                    $hostelFee = $student->hostel ? $tuitionFee->hostel_fee : 0;
+                    $totalFee = $tuitionFee->tuition_fee + $hostelFee;
                 }
-
-                // Sum all approved payments for this student
-                $totalPaid = DB::table('payments')
-                    ->where('student_id', $studentId)
-                    ->where('status', 'Approved')
-                    ->sum('amount');
-
-                // Block if not fully paid
-                $studentBlocked = $totalPaid < $totalFee;
             }
-        }
 
-        return response()->json([
-            'is_locked'       => $isLocked,
-            'student_blocked' => $studentBlocked,
-            'locked_at'       => $lock?->locked_at,
-        ]);
+            $totalPaid = DB::table('payments')
+                ->where('student_id', $studentId)
+                ->where('status', 'Approved')
+                ->sum('amount');
+
+            $studentBlocked = $totalPaid < $totalFee;
+
+        }
     }
+
+    return response()->json([
+        'is_locked'       => $isLocked,
+        'student_blocked' => $studentBlocked,
+        'locked_at'       => $lock?->locked_at,
+    ]);
+}
 
     // POST /api/week-lock/lock  (Treasurer locks access)
     public function lock()
