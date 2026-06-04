@@ -921,7 +921,7 @@ class _SelectRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: DropdownButtonFormField<String>(
-            initialValue:
+            value:
                 items.any((item) => item.value == value) ? value : null,
             hint: Text(hint, style: TextStyle(color: Colors.grey.shade500)),
             isExpanded: true,

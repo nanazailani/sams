@@ -11,6 +11,8 @@ class StudentAttendancePage extends StatefulWidget {
   final String subjectCode;
   final String subjectName;
   final String attendanceType;
+  // Optional: pre-filled code from QR scan deep link
+  final String? initialCode;
 
   const StudentAttendancePage({
     super.key,
@@ -19,6 +21,7 @@ class StudentAttendancePage extends StatefulWidget {
     required this.subjectCode,
     required this.subjectName,
     required this.attendanceType,
+    this.initialCode,
   });
 
   @override
@@ -100,6 +103,11 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       'subjectId: ${widget.subjectId}, attendanceType: $_normalizedAttendanceType',
     );
 
+    // Auto-fill code if opened via QR scan deep link
+    if (widget.initialCode != null && widget.initialCode!.isNotEmpty) {
+      codeController.text = widget.initialCode!.toUpperCase();
+    }
+
     fetchAttendanceData();
   }
 
@@ -128,7 +136,6 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         final response = await http
             .get(
               Uri.parse(
-                //'http://127.0.0.1:8000/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
                 'https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$candidateId/attendance/${widget.subjectId}?type=$_normalizedAttendanceType',
               ),
             )
@@ -188,12 +195,9 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
           totalClasses = int.tryParse(data['total_classes'].toString()) ?? 0;
           attendanceRate = data['attendance_rate']?.toString() ?? '0%';
 
-          currentSessionTitle =
-              data['current_session_title']?.toString() ?? '-';
-          currentSessionDate =
-              data['current_session_date']?.toString() ?? '-';
-          currentSessionTime =
-              data['current_session_time']?.toString() ?? '-';
+          currentSessionTitle = data['current_session_title']?.toString() ?? '-';
+          currentSessionDate = data['current_session_date']?.toString() ?? '-';
+          currentSessionTime = data['current_session_time']?.toString() ?? '-';
           activeCode = data['active_code']?.toString() ?? '-';
 
           recentRecords = records;
@@ -232,6 +236,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       });
     }
   }
+
   Future<LocationData?> _getVerifiedLocation() async {
     final location = Location();
 
@@ -305,7 +310,6 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       }
 
       final response = await http.post(
-        //Uri.parse('http://127.0.0.1:8000/api/attendance/submit'),
         Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/submit'),
         headers: {
           'Content-Type': 'application/json',
@@ -369,523 +373,517 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-  data: Theme.of(context).copyWith(
-    textTheme: Theme.of(context).textTheme.apply(
-      fontFamily: 'Nunito',
-    ),
-  ),
-  child: Scaffold(
-    backgroundColor: const Color(0xFFF3F1F2),
-    body: SafeArea(
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                  Container(
-  width: double.infinity,
-  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
-  decoration: const BoxDecoration(
-    color: Color(0xFF67C5C4),
-  ),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '${widget.subjectCode} ${widget.subjectName}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
+      data: Theme.of(context).copyWith(
+        textTheme: Theme.of(context).textTheme.apply(
+          fontFamily: 'Nunito',
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF3F1F2),
+        body: SafeArea(
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF67C5C4),
+                        ),
+                        child: Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '${widget.subjectCode} ${widget.subjectName}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(22),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 104,
-                                  height: 104,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Student profile card
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 104,
+                                    height: 104,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.black,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.account_circle,
+                                      size: 96,
                                       color: Colors.black,
-                                      width: 2,
                                     ),
                                   ),
-                                  child: const Icon(
-                                    Icons.account_circle,
-                                    size: 96,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        studentName.toUpperCase(),
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '$matricNumber - $programme',
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  attendanceRate,
-                                                  style: const TextStyle(
-                                                    fontSize: 24,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: Colors.black,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                const Text(
-                                                  'Attendance Rate',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.black87,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  '$classesAttend/$totalClasses',
-                                                  style: const TextStyle(
-                                                    fontSize: 24,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: Colors.black,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                const Text(
-                                                  'Classes Attend',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.black87,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _StatCard(
-                                  count: '$presentCount',
-                                  label: 'Present',
-                                  numberColor: const Color(0xFF59C26A),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: _StatCard(
-                                  count: '$lateCount',
-                                  label: 'Late',
-                                  numberColor: const Color(0xFFE0A92F),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: _StatCard(
-                                  count: '$absentCount',
-                                  label: 'Absent',
-                                  numberColor: const Color(0xFFE35B4F),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          const Text(
-                            'Submit Attendance Code',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(22),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  currentSessionTitle,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  currentSessionDate,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  currentSessionTime,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Container(
-                                  width: double.infinity,
-                                  height: 74,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: const Color(0xFF98A3B7),
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: TextField(
-                                    controller: codeController,
-                                    maxLength: 6,
-                                    textAlign: TextAlign.center,
-                                    textCapitalization: TextCapitalization.characters,
-                                    style: const TextStyle(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.black,
-                                      letterSpacing: 1,
-                                    ),
-                                    decoration: const InputDecoration(
-                                      hintText: '------',
-                                      border: InputBorder.none,
-                                      contentPadding: EdgeInsets.zero,
-                                      counterText: '',
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: isGpsVerified
-                                        ? const Color(0xFFBFE8CC)
-                                        : const Color(0xFFFFE9C7),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        isGpsVerified ? Icons.location_on : Icons.location_off,
-                                        size: 16,
-                                        color: isGpsVerified
-                                            ? const Color(0xFF59B97A)
-                                            : const Color(0xFFE0A92F),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          gpsStatusText,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          studentName.toUpperCase(),
                                           style: const TextStyle(
-                                            fontSize: 10.5,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
                                             color: Colors.black87,
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '$matricNumber - $programme',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    attendanceRate,
+                                                    style: const TextStyle(
+                                                      fontSize: 24,
+                                                      fontWeight: FontWeight.w800,
+                                                      color: Colors.black,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  const Text(
+                                                    'Attendance Rate',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.black87,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '$classesAttend/$totalClasses',
+                                                    style: const TextStyle(
+                                                      fontSize: 24,
+                                                      fontWeight: FontWeight.w800,
+                                                      color: Colors.black,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  const Text(
+                                                    'Classes Attend',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.black87,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            // Stat cards row
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _StatCard(
+                                    count: '$presentCount',
+                                    label: 'Present',
+                                    numberColor: const Color(0xFF59C26A),
                                   ),
                                 ),
-                                const SizedBox(height: 14),
-                                SizedBox(
-                                  width: 210,
-                                  height: 48,
-                                  child: ElevatedButton(
-                                    onPressed: isSubmitting ? null : submitAttendance,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF49C1C4),
-                                      foregroundColor: Colors.white,
-                                      elevation: 0,
-                                      shadowColor: Colors.transparent,
-                                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(26),
-                                      ),
-                                    ),
-                                    child: isSubmitting
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                            ),
-                                          )
-                                        : const Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                Icons.check_circle_outline,
-                                                size: 18,
-                                                color: Colors.white,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text(
-                                                'Submit Attendance',
-                                                style: TextStyle(
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w800,
-                                                  letterSpacing: 0.2,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: _StatCard(
+                                    count: '$lateCount',
+                                    label: 'Late',
+                                    numberColor: const Color(0xFFE0A92F),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: _StatCard(
+                                    count: '$absentCount',
+                                    label: 'Absent',
+                                    numberColor: const Color(0xFFE35B4F),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(height: 18),
-                          const Text(
-                            'Recent Records',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black87,
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Submit Attendance Code',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black87,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Column(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 12,
-                                  ),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFF4F6FA),
-                                    borderRadius: BorderRadius.only(
-                                      topLeft: Radius.circular(18),
-                                      topRight: Radius.circular(18),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: Column(
+                                children: [
+                                  // Session title (already contains the date, e.g. "Lecture Session - Wednesday, 10 June 2026")
+                                  if (currentSessionTitle != '-' && currentSessionTitle.isNotEmpty)
+                                    Text(
+                                      currentSessionTitle,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  // Session time — only show if not a dash/empty
+                                  if (currentSessionTime != '-' && currentSessionTime.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      currentSessionTime,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 14),
+                                  Container(
+                                    width: double.infinity,
+                                    height: 74,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: const Color(0xFF98A3B7),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: TextField(
+                                      controller: codeController,
+                                      maxLength: 6,
+                                      textAlign: TextAlign.center,
+                                      textCapitalization: TextCapitalization.characters,
+                                      style: const TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.black,
+                                        letterSpacing: 1,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        hintText: '------',
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.zero,
+                                        counterText: '',
+                                      ),
                                     ),
                                   ),
-                                  child: const Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 3,
-                                        child: Text(
-                                          'SESSION',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF6F7A8C),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 3,
-                                        child: Text(
-                                          'DATE',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF6F7A8C),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          'TIME',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF6F7A8C),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          'STATUS',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF6F7A8C),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (recentRecords.isEmpty)
-                                  const Padding(
-                                    padding: EdgeInsets.all(18),
-                                    child: Text(
-                                      'No attendance records yet.',
-                                      style: TextStyle(color: Colors.black54),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isGpsVerified
+                                          ? const Color(0xFFBFE8CC)
+                                          : const Color(0xFFFFE9C7),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
-                                  )
-                                else
-                                  ...List.generate(recentRecords.length, (index) {
-                                    final item = recentRecords[index];
-                                    final status = item['status'] ?? '';
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 14,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          top: BorderSide(
-                                            color: index == 0
-                                                ? const Color(0xFF3C3C3C)
-                                                : const Color(0xFFE9EDF4),
-                                            width: 1,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          isGpsVerified ? Icons.location_on : Icons.location_off,
+                                          size: 16,
+                                          color: isGpsVerified
+                                              ? const Color(0xFF59B97A)
+                                              : const Color(0xFFE0A92F),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            gpsStatusText,
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              color: Colors.black87,
+                                            ),
                                           ),
                                         ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  SizedBox(
+                                    width: 210,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: isSubmitting ? null : submitAttendance,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF49C1C4),
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(26),
+                                        ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            flex: 3,
-                                            child: Text(
-                                              item['session'] ?? '',
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.black87,
+                                      child: isSubmitting
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                               ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 3,
-                                            child: Text(
-                                              item['date'] ?? '',
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.black87,
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 2,
-                                            child: Text(
-                                              item['time'] ?? '',
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.black87,
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 2,
-                                            child: Align(
-                                              alignment: Alignment.centerLeft,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 9,
-                                                  vertical: 4,
+                                            )
+                                          : const Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.check_circle_outline,
+                                                  size: 18,
+                                                  color: Colors.white,
                                                 ),
-                                                decoration: BoxDecoration(
-                                                  color: _statusBackgroundColor(status),
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                                child: Text(
-                                                  status,
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Submit Attendance',
                                                   style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: _statusTextColor(status),
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
+                                                    letterSpacing: 0.2,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Recent Records',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 12,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFF4F6FA),
+                                      borderRadius: BorderRadius.only(
+                                        topLeft: Radius.circular(18),
+                                        topRight: Radius.circular(18),
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            'SESSION',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF6F7A8C),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            'DATE',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF6F7A8C),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            'TIME',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF6F7A8C),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            'STATUS',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF6F7A8C),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (recentRecords.isEmpty)
+                                    const Padding(
+                                      padding: EdgeInsets.all(18),
+                                      child: Text(
+                                        'No attendance records yet.',
+                                        style: TextStyle(color: Colors.black54),
+                                      ),
+                                    )
+                                  else
+                                    ...List.generate(recentRecords.length, (index) {
+                                      final item = recentRecords[index];
+                                      final status = item['status'] ?? '';
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 14,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            top: BorderSide(
+                                              color: index == 0
+                                                  ? const Color(0xFF3C3C3C)
+                                                  : const Color(0xFFE9EDF4),
+                                              width: 1,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              flex: 3,
+                                              child: Text(
+                                                item['session'] ?? '',
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.black87,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 3,
+                                              child: Text(
+                                                item['date'] ?? '',
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.black87,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 2,
+                                              child: Text(
+                                                item['time'] ?? '',
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.black87,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 2,
+                                              child: Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 9,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: _statusBackgroundColor(status),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  child: Text(
+                                                    status,
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: _statusTextColor(status),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                              ],
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+        ),
       ),
-  ),
     );
-    
   }
 
   Color _statusTextColor(String status) {
@@ -956,4 +954,4 @@ class _StatCard extends StatelessWidget {
       ),
     );
   }
-  }
+}

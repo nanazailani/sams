@@ -776,7 +776,7 @@ class _PillDropdown extends StatelessWidget {
     final selectedValue = items.contains(value) ? value : items.first;
 
     return DropdownButtonFormField<String>(
-      initialValue: selectedValue,
+      value: selectedValue,
       isExpanded: true,
       icon: const Icon(Icons.arrow_drop_down, size: 18),
       style: const TextStyle(color: Colors.black87, fontSize: 11),
@@ -818,7 +818,7 @@ class _LecturerDropdown extends StatelessWidget {
     final selectedValue = labels.contains(value) ? value : null;
 
     return DropdownButtonFormField<String>(
-      initialValue: selectedValue,
+      value: selectedValue,
       isExpanded: true,
       icon: const Icon(Icons.arrow_drop_down, size: 18),
       style: const TextStyle(color: Colors.black87, fontSize: 11),

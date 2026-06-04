@@ -70,7 +70,6 @@ class _ClassPageState extends State<ClassPage> {
     try {
       final response = await http
           .get(
-            //Uri.parse('http://127.0.0.1:8000/api/lecturer/$lecturerId/classes'),
             Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/lecturer/$lecturerId/classes'),
           )
           .timeout(const Duration(seconds: 10));
@@ -122,7 +121,7 @@ class _ClassPageState extends State<ClassPage> {
             'week_number': item['week_number']?.toString() ?? '',
             'attendance_type': isModuleItem ? 'module' : 'course',
             'module_id': item['module_id']?.toString() ?? '',
-            'subject_id': item['subject_id']?.toString() ?? '',
+            'subject_id': item['subject_id']?.toString() ?? '',  // ← already stored here
           };
 
           if (isModuleItem) {
@@ -173,7 +172,6 @@ class _ClassPageState extends State<ClassPage> {
         });
       } else {
         debugPrint('Lecturer classes API failed: ${response.statusCode}');
-        debugPrint('Lecturer classes API body: ${response.body}');
         setState(() {
           courses = [];
           modules = [];
@@ -284,12 +282,21 @@ class _ClassPageState extends State<ClassPage> {
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                         onTap: () {
+                          // ✅ Use subject_id (e.g. 15) for the QR, not id (e.g. 3)
+                          final subjectId = int.tryParse(session['subject_id'] ?? '') ?? 0;
+                          final moduleId = int.tryParse(session['module_id'] ?? '') ?? 0;
+                          // For modules use module_id, for courses use subject_id
+                          final resolvedSubjectId = attendanceType == 'module' ? moduleId : subjectId;
+
+                          debugPrint('Navigating to AttendancePage: classSessionId=${session['id']}, subjectId=$resolvedSubjectId');
+
                           Navigator.pop(context);
                           Navigator.push(
                             this.context,
                             MaterialPageRoute(
                               builder: (context) => AttendancePage(
                                 classSessionId: int.tryParse(session['id'] ?? '') ?? 1,
+                                subjectId: resolvedSubjectId,   // ← NEW: correct subject ID
                                 subjectCode: session['code'] ?? '',
                                 subjectName: session['name'] ?? '',
                                 classDate: session['class_date'] ?? '',
@@ -364,7 +371,6 @@ class _ClassPageState extends State<ClassPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header with logout ──
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
@@ -507,20 +513,14 @@ class _ClassPageState extends State<ClassPage> {
                   flex: 2,
                   child: Text(
                     titleOne,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                   ),
                 ),
                 Expanded(
                   flex: 4,
                   child: Text(
                     titleTwo,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                   ),
                 ),
                 Expanded(
@@ -528,10 +528,7 @@ class _ClassPageState extends State<ClassPage> {
                   child: Text(
                     actionTitle,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -551,21 +548,14 @@ class _ClassPageState extends State<ClassPage> {
                         flex: 2,
                         child: Text(
                           item['code'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                         ),
                       ),
                       Expanded(
                         flex: 4,
                         child: Text(
                           item['name'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            height: 1.3,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: const TextStyle(fontSize: 14, height: 1.3, fontWeight: FontWeight.w500),
                         ),
                       ),
                       Expanded(
@@ -576,9 +566,7 @@ class _ClassPageState extends State<ClassPage> {
                             const SizedBox(height: 8),
                             _buildActionButton(
                               'Attendance',
-                              onPressed: () {
-                                _showCourseSessions(item);
-                              },
+                              onPressed: () => _showCourseSessions(item),
                             ),
                           ],
                         ),
@@ -619,10 +607,7 @@ class _ClassPageState extends State<ClassPage> {
         ),
         child: Text(
           label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         ),
       ),
     );

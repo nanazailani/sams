@@ -160,7 +160,7 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
                   Text(record.studentName),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedStatus,
+                    value: selectedStatus,
                     items: const [
                       DropdownMenuItem(value: 'Present', child: Text('Present')),
                       DropdownMenuItem(value: 'Late', child: Text('Late')),

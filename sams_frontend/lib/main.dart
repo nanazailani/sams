@@ -7,6 +7,11 @@ import 'package:sams_frontend/attendance/lecturer/class.dart';
 import 'package:sams_frontend/tuition_fee/treasurer/dashboard_page.dart' as treasurer_page;
 import 'package:sams_frontend/faculty_registrar/mainNavigation.dart' as faculty_reg_nav;
 import 'package:sams_frontend/pusat_adab/mainNavigation.dart' as pusat_adab_nav;
+import 'package:sams_frontend/attendance/student/attendance.dart';
+import 'deep_link_handler.dart';
+import 'pending_deep_link.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   runApp(const SAMSApp());
@@ -17,14 +22,18 @@ class SAMSApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SAMS Login',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        fontFamily: 'Nunito',
+    return DeepLinkHandler(
+      navigatorKey: navigatorKey,
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
+        title: 'SAMS Login',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+          fontFamily: 'Nunito',
+        ),
+        home: const LoginPage(),
       ),
-      home: const LoginPage(),
     );
   }
 }
@@ -92,10 +101,6 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final response = await http.post(
         Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/login'),
-        //Uri.parse('http://127.0.0.1:8000/api/login'),
-        //Uri.parse('http://10.62.79.61:8000/api/login'),
-        //Uri.parse('http://10.0.2.2:8000/api/login'),
-
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -162,6 +167,30 @@ class _LoginPageState extends State<LoginPage> {
         final resolvedRole = (data['role'] ?? apiRole).toString().trim();
         final normalizedRole = resolvedRole.toLowerCase();
 
+        // ── After login: check if a QR deep link was pending ──────────────
+        final pending = PendingDeepLink.consume();
+
+        if (pending != null && normalizedRole == 'student') {
+          // Student scanned QR before logging in → go straight to attendance
+          final studentId = prefs.getInt('student_id') ?? 0;
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => StudentAttendancePage(
+                studentId: studentId,
+                subjectId: pending.subjectId,
+                subjectCode: '',
+                subjectName: '',
+                attendanceType: pending.type,
+                initialCode: pending.code,
+              ),
+            ),
+          );
+          return; // skip the normal role-based routing below
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         if (normalizedRole == 'lecturer') {
           Navigator.pushReplacement(
             context,
@@ -190,8 +219,7 @@ class _LoginPageState extends State<LoginPage> {
               builder: (context) => const faculty_reg_nav.MainNavigation(),
             ),
           );
-        } else if (normalizedRole == 'pusat_adab' ||
-            normalizedRole == 'pusat adab') {
+        } else if (normalizedRole == 'pusat_adab' || normalizedRole == 'pusat adab') {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -209,8 +237,7 @@ class _LoginPageState extends State<LoginPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              data['message']?.toString() ??
-                  'Login failed. Please check your credentials.',
+              data['message']?.toString() ?? 'Login failed. Please check your credentials.',
             ),
           ),
         );
@@ -268,7 +295,6 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Logo
                     Image.asset(
                       'assets/images/logoumpsa.png',
                       height: 160,
@@ -284,8 +310,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 14),
-
-                    
                     const SizedBox(height: 6),
                     const Text(
                       'Student Academic Management System',
@@ -297,8 +321,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 28),
-
-                    // ID Number field
                     _buildInputField(
                       controller: idController,
                       hintText: 'ID Number',
@@ -306,16 +328,10 @@ class _LoginPageState extends State<LoginPage> {
                       textCapitalization: TextCapitalization.characters,
                     ),
                     const SizedBox(height: 14),
-
-                    // Password field
                     _buildPasswordField(),
                     const SizedBox(height: 14),
-
-                    // Category dropdown
                     _buildDropdown(),
                     const SizedBox(height: 14),
-
-                    // Remember Me + Forgot Password
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -325,11 +341,11 @@ class _LoginPageState extends State<LoginPage> {
                               width: 18,
                               height: 18,
                               child: Checkbox(
-                                tristate: false, // ✅ FIXED
+                                tristate: false,
                                 value: rememberMe,
                                 onChanged: (bool? val) {
                                   setState(() {
-                                    rememberMe = val == true; // ✅ FIXED
+                                    rememberMe = val == true;
                                   });
                                 },
                                 activeColor: const Color(0xFF6B5BE6),
@@ -363,8 +379,6 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                     const SizedBox(height: 24),
-
-                    // Login Button
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -447,8 +461,7 @@ class _LoginPageState extends State<LoginPage> {
         decoration: InputDecoration(
           hintText: 'Password',
           hintStyle: const TextStyle(color: Color(0xFF9E9E9E), fontSize: 14),
-          prefixIcon: const Icon(Icons.lock_outline,
-              color: Color(0xFF9E9E9E), size: 20),
+          prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF9E9E9E), size: 20),
           suffixIcon: GestureDetector(
             onTap: () {
               setState(() {
@@ -456,9 +469,7 @@ class _LoginPageState extends State<LoginPage> {
               });
             },
             child: Icon(
-              obscurePassword
-                  ? Icons.visibility_off_outlined
-                  : Icons.visibility_outlined,
+              obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
               color: const Color(0xFF9E9E9E),
               size: 20,
             ),
@@ -481,8 +492,7 @@ class _LoginPageState extends State<LoginPage> {
         child: DropdownButtonFormField<String>(
           value: selectedRole,
           decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.language,
-                color: Color(0xFF9E9E9E), size: 20),
+            prefixIcon: Icon(Icons.language, color: Color(0xFF9E9E9E), size: 20),
             border: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(vertical: 4),
           ),
@@ -490,8 +500,7 @@ class _LoginPageState extends State<LoginPage> {
             'Category',
             style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 14),
           ),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              color: Color(0xFF9E9E9E)),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF9E9E9E)),
           dropdownColor: const Color(0xFFEEEAFA),
           style: const TextStyle(fontSize: 14, color: Color(0xFF2D2D2D)),
           items: roles.map((role) {
