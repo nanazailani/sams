@@ -6,11 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class RegisterCoursesPage extends StatefulWidget {
   final Map<String, dynamic> subject;
+  final VoidCallback onBack;
   final VoidCallback onConfirmed;
 
   const RegisterCoursesPage({
     super.key,
     required this.subject,
+    required this.onBack,
     required this.onConfirmed,
   });
 
@@ -564,30 +566,36 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _backgroundColor,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: _primaryColor),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
-                      child: Column(
-                        children: [
-                          _buildInfoTable(),
-                          const SizedBox(height: 36),
-                          _buildRegisterCard(),
-                        ],
+    return WillPopScope(
+      onWillPop: () async {
+        widget.onBack();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: _backgroundColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(),
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: _primaryColor),
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+                        child: Column(
+                          children: [
+                            _buildInfoTable(),
+                            const SizedBox(height: 36),
+                            _buildRegisterCard(),
+                          ],
+                        ),
                       ),
-                    ),
-            ),
-            _buildCreditFooter(),
-          ],
+              ),
+              _buildCreditFooter(),
+            ],
+          ),
         ),
       ),
     );
@@ -598,13 +606,26 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(30, 28, 16, 24),
       color: _primaryColor,
-      child: const Text(
-        'Register Subject',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: widget.onBack,
+            child: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Register Subject',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

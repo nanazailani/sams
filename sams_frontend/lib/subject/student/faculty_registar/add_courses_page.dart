@@ -47,10 +47,12 @@ String _normalizedTime(String time) {
 }
 
 class AddCoursesPage extends StatefulWidget {
+  final VoidCallback onBack;
   final VoidCallback onCourseSaved;
 
   const AddCoursesPage({
     super.key,
+    required this.onBack,
     required this.onCourseSaved,
   });
 
@@ -300,13 +302,26 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
           end: Alignment.centerRight,
         ),
       ),
-      child: const Text(
-        'Add Courses',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: widget.onBack,
+            child: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Add Courses',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
