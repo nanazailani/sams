@@ -23,13 +23,13 @@ class RegistrationController extends Controller
 
             $registeredSubjectIds = $registrations
                 ->pluck('subject_id')
-                ->map(fn ($id) => (int) $id)
+                ->map(fn($id) => (int) $id)
                 ->all();
 
             if (Schema::hasColumn('subject_registrations', 'rejection_reason')) {
                 $rejectedSubjects = $registrations
-                    ->filter(fn ($row) => ($row->approval_status ?? null) === 'Rejected')
-                    ->mapWithKeys(fn ($row) => [
+                    ->filter(fn($row) => ($row->approval_status ?? null) === 'Rejected')
+                    ->mapWithKeys(fn($row) => [
                         (int) $row->subject_id => (string) ($row->rejection_reason ?? ''),
                     ])
                     ->all();
@@ -47,6 +47,7 @@ class RegistrationController extends Controller
                 'examination' => $subject->examination ?? null,
                 'exam_date' => $subject->exam_date ?? null,
                 'exam_period' => $subject->exam_period ?? null,
+                'lecturer_id' => $subject->lecturer_id ?? null,
                 'instructors' => $this->getSubjectInstructors($subject->id),
                 'is_registered' => in_array((int) $subject->id, $registeredSubjectIds, true),
                 'rejection_reason' => $rejectedSubjects[(int) $subject->id] ?? null,
@@ -57,33 +58,35 @@ class RegistrationController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:255', Rule::unique('subjects', 'code')],
-            'name' => ['required', 'string', 'max:255'],
-            'credit_hour' => ['required', 'integer', 'min:1'],
-            'examination' => ['nullable', 'boolean'],
-            'exam_date' => ['nullable', 'date'],
-            'exam_period' => ['nullable', 'in:AM,PM'],
-            'sections' => ['nullable', 'array'],
-            'sections.*.name' => ['required_with:sections', 'string', 'max:50'],
-            'sections.*.day' => ['nullable', 'string', 'max:20'],
-            'sections.*.time' => ['nullable', 'string', 'max:20'],
-            'sections.*.location' => ['nullable', 'string', 'max:50'],
-            'sections.*.capacity' => ['nullable', 'integer', 'min:0'],
+            'code'                  => ['required', 'string', 'max:255', Rule::unique('subjects', 'code')],
+            'name'                  => ['required', 'string', 'max:255'],
+            'credit_hour'           => ['required', 'integer', 'min:1'],
+            'lecturer_id'           => ['nullable', 'integer', 'exists:lecturers,id'],
+            'examination'           => ['nullable', 'boolean'],
+            'exam_date'             => ['nullable', 'date'],
+            'exam_period'           => ['nullable', 'in:AM,PM'],
+            'sections'              => ['nullable', 'array'],
+            'sections.*.name'       => ['required_with:sections', 'string', 'max:50'],
+            'sections.*.day'        => ['nullable', 'string', 'max:20'],
+            'sections.*.time'       => ['nullable', 'string', 'max:20'],
+            'sections.*.location'   => ['nullable', 'string', 'max:50'],
+            'sections.*.capacity'   => ['nullable', 'integer', 'min:0'],
             'sections.*.instructor' => ['nullable', 'string', 'max:255'],
-            'tutorials' => ['nullable', 'array'],
-            'tutorials.*.name' => ['required_with:tutorials', 'string', 'max:50'],
-            'tutorials.*.day' => ['nullable', 'string', 'max:20'],
-            'tutorials.*.time' => ['nullable', 'string', 'max:20'],
-            'tutorials.*.location' => ['nullable', 'string', 'max:50'],
-            'tutorials.*.capacity' => ['nullable', 'integer', 'min:0'],
+            'tutorials'              => ['nullable', 'array'],
+            'tutorials.*.name'       => ['required_with:tutorials', 'string', 'max:50'],
+            'tutorials.*.day'        => ['nullable', 'string', 'max:20'],
+            'tutorials.*.time'       => ['nullable', 'string', 'max:20'],
+            'tutorials.*.location'   => ['nullable', 'string', 'max:50'],
+            'tutorials.*.capacity'   => ['nullable', 'integer', 'min:0'],
             'tutorials.*.instructor' => ['nullable', 'string', 'max:255'],
         ]);
 
         return DB::transaction(function () use ($validated) {
             $subjectData = [
-                'code' => strtoupper($validated['code']),
-                'name' => $validated['name'],
+                'code'        => strtoupper($validated['code']),
+                'name'        => $validated['name'],
                 'credit_hour' => $validated['credit_hour'],
+                'lecturer_id' => $validated['lecturer_id'] ?? null,
             ];
 
             foreach (['examination', 'exam_date', 'exam_period'] as $column) {
@@ -94,20 +97,12 @@ class RegistrationController extends Controller
 
             $subject = Subject::create($subjectData);
 
-            $this->insertClassEntries(
-                'lecture_section',
-                $subject->id,
-                $validated['sections'] ?? []
-            );
-            $this->insertClassEntries(
-                'lab_section',
-                $subject->id,
-                $validated['tutorials'] ?? []
-            );
+            $this->insertClassEntries('lecture_section', $subject->id, $validated['sections'] ?? []);
+            $this->insertClassEntries('lab_section', $subject->id, $validated['tutorials'] ?? []);
 
             return response()->json([
                 'message' => 'Subject created successfully',
-                'data' => $subject,
+                'data'    => $subject,
             ], 201);
         });
     }
@@ -115,22 +110,23 @@ class RegistrationController extends Controller
     public function show($id)
     {
         $subject = Subject::findOrFail($id);
-        $sections = $this->getSubjectTimetableEntries('lecture_section', $subject->id, 'L');
-        $tutorials = $this->getSubjectTimetableEntries('lab_section', $subject->id, 'B');
+        $sections      = $this->getSubjectTimetableEntries('lecture_section', $subject->id, 'L');
+        $tutorials     = $this->getSubjectTimetableEntries('lab_section', $subject->id, 'B');
         $legacySessions = $this->getSubjectTimetableEntries('class_sessions', $subject->id);
 
         return response()->json([
-            'id' => $subject->id,
-            'code' => $subject->code,
-            'name' => $subject->name,
+            'id'          => $subject->id,
+            'code'        => $subject->code,
+            'name'        => $subject->name,
             'credit_hour' => $subject->credit_hour,
+            'lecturer_id' => $subject->lecturer_id ?? null,
             'examination' => $subject->examination ?? null,
-            'exam_date' => $subject->exam_date ?? null,
+            'exam_date'   => $subject->exam_date ?? null,
             'exam_period' => $subject->exam_period ?? null,
             'instructors' => $this->getSubjectInstructors($subject->id),
-            'sections' => $sections,
-            'tutorials' => $tutorials,
-            'timetable' => array_merge($sections, $tutorials, $legacySessions),
+            'sections'    => $sections,
+            'tutorials'   => $tutorials,
+            'timetable'   => array_merge($sections, $tutorials, $legacySessions),
         ]);
     }
 
@@ -139,33 +135,35 @@ class RegistrationController extends Controller
         $subject = Subject::findOrFail($id);
 
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:255', Rule::unique('subjects', 'code')->ignore($subject->id)],
-            'name' => ['required', 'string', 'max:255'],
-            'credit_hour' => ['required', 'integer', 'min:1'],
-            'examination' => ['nullable', 'boolean'],
-            'exam_date' => ['nullable', 'date'],
-            'exam_period' => ['nullable', 'in:AM,PM'],
-            'sections' => ['nullable', 'array'],
-            'sections.*.name' => ['required_with:sections', 'string', 'max:50'],
-            'sections.*.day' => ['nullable', 'string', 'max:20'],
-            'sections.*.time' => ['nullable', 'string', 'max:20'],
-            'sections.*.location' => ['nullable', 'string', 'max:50'],
-            'sections.*.capacity' => ['nullable', 'integer', 'min:0'],
+            'code'                  => ['required', 'string', 'max:255', Rule::unique('subjects', 'code')->ignore($subject->id)],
+            'name'                  => ['required', 'string', 'max:255'],
+            'credit_hour'           => ['required', 'integer', 'min:1'],
+            'lecturer_id'           => ['nullable', 'integer', 'exists:lecturers,id'],
+            'examination'           => ['nullable', 'boolean'],
+            'exam_date'             => ['nullable', 'date'],
+            'exam_period'           => ['nullable', 'in:AM,PM'],
+            'sections'              => ['nullable', 'array'],
+            'sections.*.name'       => ['required_with:sections', 'string', 'max:50'],
+            'sections.*.day'        => ['nullable', 'string', 'max:20'],
+            'sections.*.time'       => ['nullable', 'string', 'max:20'],
+            'sections.*.location'   => ['nullable', 'string', 'max:50'],
+            'sections.*.capacity'   => ['nullable', 'integer', 'min:0'],
             'sections.*.instructor' => ['nullable', 'string', 'max:255'],
-            'tutorials' => ['nullable', 'array'],
-            'tutorials.*.name' => ['required_with:tutorials', 'string', 'max:50'],
-            'tutorials.*.day' => ['nullable', 'string', 'max:20'],
-            'tutorials.*.time' => ['nullable', 'string', 'max:20'],
-            'tutorials.*.location' => ['nullable', 'string', 'max:50'],
-            'tutorials.*.capacity' => ['nullable', 'integer', 'min:0'],
+            'tutorials'              => ['nullable', 'array'],
+            'tutorials.*.name'       => ['required_with:tutorials', 'string', 'max:50'],
+            'tutorials.*.day'        => ['nullable', 'string', 'max:20'],
+            'tutorials.*.time'       => ['nullable', 'string', 'max:20'],
+            'tutorials.*.location'   => ['nullable', 'string', 'max:50'],
+            'tutorials.*.capacity'   => ['nullable', 'integer', 'min:0'],
             'tutorials.*.instructor' => ['nullable', 'string', 'max:255'],
         ]);
 
         return DB::transaction(function () use ($subject, $validated) {
             $subjectData = [
-                'code' => strtoupper($validated['code']),
-                'name' => $validated['name'],
+                'code'        => strtoupper($validated['code']),
+                'name'        => $validated['name'],
                 'credit_hour' => $validated['credit_hour'],
+                'lecturer_id' => $validated['lecturer_id'] ?? null,
             ];
 
             foreach (['examination', 'exam_date', 'exam_period'] as $column) {
@@ -180,7 +178,7 @@ class RegistrationController extends Controller
 
             return response()->json([
                 'message' => 'Subject updated successfully',
-                'data' => $subject->fresh(),
+                'data'    => $subject->fresh(),
             ]);
         });
     }
@@ -196,9 +194,9 @@ class RegistrationController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'student_id' => ['required', 'integer', 'exists:students,id'],
-            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
-            'section' => ['nullable', 'string', 'max:50'],
+            'student_id'  => ['required', 'integer', 'exists:students,id'],
+            'subject_id'  => ['required', 'integer', 'exists:subjects,id'],
+            'section'     => ['nullable', 'string', 'max:50'],
             'tutorial_lab' => ['nullable', 'string', 'max:50'],
         ]);
 
@@ -235,9 +233,9 @@ class RegistrationController extends Controller
 
             $data[$column] = match ($column) {
                 'approval_status' => 'Pending',
-                'section' => $validated['section'] ?? null,
-                'tutorial_lab' => $validated['tutorial_lab'] ?? null,
-                default => null,
+                'section'         => $validated['section'] ?? null,
+                'tutorial_lab'    => $validated['tutorial_lab'] ?? null,
+                default           => null,
             };
         }
 
@@ -268,11 +266,7 @@ class RegistrationController extends Controller
 
         if (!Schema::hasTable('subject_registrations')) {
             return response()->json([
-                'subject' => [
-                    'id' => $subject->id,
-                    'code' => $subject->code,
-                    'name' => $subject->name,
-                ],
+                'subject'  => ['id' => $subject->id, 'code' => $subject->code, 'name' => $subject->name],
                 'students' => [],
             ]);
         }
@@ -312,34 +306,26 @@ class RegistrationController extends Controller
             ->get()
             ->map(function ($student) {
                 return [
-                    'student_id' => $student->student_id,
-                    'name' => $student->name,
-                    'matric_no' => $student->matric_no,
-                    'year' => $student->year,
-                    'section' => $student->section ?? null,
+                    'student_id'   => $student->student_id,
+                    'name'         => $student->name,
+                    'matric_no'    => $student->matric_no,
+                    'year'         => $student->year,
+                    'section'      => $student->section ?? null,
                     'tutorial_lab' => $student->tutorial_lab ?? null,
-                    'advisor' => $this->getStudentAdvisor((int) $student->student_id),
+                    'advisor'      => $this->getStudentAdvisor((int) $student->student_id),
                 ];
             });
 
         return response()->json([
-            'subject' => [
-                'id' => $subject->id,
-                'code' => $subject->code,
-                'name' => $subject->name,
-            ],
-            'slot' => [
-                'mode' => $mode,
-                'section' => $slot,
-            ],
+            'subject'  => ['id' => $subject->id, 'code' => $subject->code, 'name' => $subject->name],
+            'slot'     => ['mode' => $mode, 'section' => $slot],
             'students' => $students,
         ]);
     }
 
     public function removeRegisteredSubject($studentId, $subjectId = null)
     {
-        $query = DB::table('subject_registrations')
-            ->where('student_id', $studentId);
+        $query = DB::table('subject_registrations')->where('student_id', $studentId);
 
         if ($subjectId !== null) {
             $query->where('subject_id', $subjectId);
@@ -356,8 +342,7 @@ class RegistrationController extends Controller
 
     public function notifyRegistrar($studentId)
     {
-        $pendingQuery = DB::table('subject_registrations')
-            ->where('student_id', $studentId);
+        $pendingQuery = DB::table('subject_registrations')->where('student_id', $studentId);
 
         if (Schema::hasColumn('subject_registrations', 'approval_status')) {
             $pendingQuery->where('approval_status', 'Pending');
@@ -366,9 +351,7 @@ class RegistrationController extends Controller
         $pendingRegistrationIds = $pendingQuery->pluck('id');
 
         if ($pendingRegistrationIds->isEmpty()) {
-            return response()->json([
-                'message' => 'No pending subject registration to notify.',
-            ], 422);
+            return response()->json(['message' => 'No pending subject registration to notify.'], 422);
         }
 
         if (Schema::hasTable('subject_registration_notifications')) {
@@ -376,16 +359,16 @@ class RegistrationController extends Controller
                 ['student_id' => $studentId],
                 [
                     'pending_count' => $pendingRegistrationIds->count(),
-                    'message' => 'Student requested subject registration approval.',
-                    'notified_at' => now(),
-                    'updated_at' => now(),
-                    'created_at' => now(),
+                    'message'       => 'Student requested subject registration approval.',
+                    'notified_at'   => now(),
+                    'updated_at'    => now(),
+                    'created_at'    => now(),
                 ]
             );
         }
 
         return response()->json([
-            'message' => 'Faculty registrar has been notified.',
+            'message'       => 'Faculty registrar has been notified.',
             'pending_count' => $pendingRegistrationIds->count(),
         ]);
     }
@@ -394,7 +377,7 @@ class RegistrationController extends Controller
     {
         if (!Schema::hasTable('subject_registrations')) {
             return response()->json([
-                'counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0],
+                'counts'   => ['pending' => 0, 'approved' => 0, 'rejected' => 0],
                 'students' => [],
             ]);
         }
@@ -409,13 +392,7 @@ class RegistrationController extends Controller
                 'students.programme',
                 'students.year'
             )
-            ->groupBy(
-                'students.id',
-                'users.name',
-                'students.matric_no',
-                'students.programme',
-                'students.year'
-            )
+            ->groupBy('students.id', 'users.name', 'students.matric_no', 'students.programme', 'students.year')
             ->orderBy('users.name');
 
         $search = trim((string) $request->query('search', ''));
@@ -432,19 +409,19 @@ class RegistrationController extends Controller
                 ->get();
 
             return [
-                'student_id' => $student->student_id,
-                'name' => $student->name,
-                'matric_no' => $student->matric_no,
-                'programme' => $student->programme,
-                'year' => $student->year,
-                'advisor' => $this->getStudentAdvisor((int) $student->student_id),
-                'status' => $this->approvalStatusSummary($registrations),
-                'registered_count' => $registrations->count(),
+                'student_id'         => $student->student_id,
+                'name'               => $student->name,
+                'matric_no'          => $student->matric_no,
+                'programme'          => $student->programme,
+                'year'               => $student->year,
+                'advisor'            => $this->getStudentAdvisor((int) $student->student_id),
+                'status'             => $this->approvalStatusSummary($registrations),
+                'registered_count'   => $registrations->count(),
             ];
         });
 
         return response()->json([
-            'counts' => $this->approvalStatusSummary(),
+            'counts'   => $this->approvalStatusSummary(),
             'students' => $students,
         ]);
     }
@@ -452,13 +429,11 @@ class RegistrationController extends Controller
     public function studentApprovalSubjects($studentId)
     {
         $subjects = $this->registeredSubjectRows($studentId, true)->map(function ($subject) {
-            return $subject + [
-                'status' => $subject['approval_status'] ?? 'Pending',
-            ];
+            return $subject + ['status' => $subject['approval_status'] ?? 'Pending'];
         });
 
         return response()->json([
-            'student' => $this->approvalStudentInfo($studentId),
+            'student'  => $this->approvalStudentInfo($studentId),
             'subjects' => $subjects,
         ]);
     }
@@ -466,7 +441,7 @@ class RegistrationController extends Controller
     public function updateRegistrationStatus(Request $request, $registrationId = null)
     {
         $validated = $request->validate([
-            'status' => ['required', 'in:Pending,Approved,Rejected'],
+            'status'           => ['required', 'in:Pending,Approved,Rejected'],
             'rejection_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -477,7 +452,7 @@ class RegistrationController extends Controller
         }
 
         $studentId = $request->route('studentId');
-        $query = DB::table('subject_registrations');
+        $query     = DB::table('subject_registrations');
 
         if ($studentId !== null) {
             $query->where('student_id', $studentId);
@@ -487,7 +462,7 @@ class RegistrationController extends Controller
 
         $updateData = [
             'approval_status' => $validated['status'],
-            'updated_at' => now(),
+            'updated_at'      => now(),
         ];
 
         if (Schema::hasColumn('subject_registrations', 'rejection_reason')) {
@@ -505,6 +480,8 @@ class RegistrationController extends Controller
         ]);
     }
 
+    // ─── PRIVATE HELPERS ────────────────────────────────────────────────────────
+
     private function insertClassEntries(string $table, int $subjectId, array $entries): void
     {
         if (!Schema::hasTable($table)) {
@@ -521,28 +498,15 @@ class RegistrationController extends Controller
                 }
             }
 
-            if (Schema::hasColumn($table, 'subject_id')) {
-                $row['subject_id'] = $subjectId;
-            }
-
-            if (Schema::hasColumn($table, 'room')) {
-                $row['room'] = $entry['location'] ?? null;
-            }
-
-            if (Schema::hasColumn($table, 'location')) {
-                $row['location'] = $entry['location'] ?? null;
-            }
-
-            if (Schema::hasColumn($table, 'capacity')) {
-                $row['capacity'] = $entry['capacity'] ?? 0;
-            }
+            if (Schema::hasColumn($table, 'subject_id'))   $row['subject_id'] = $subjectId;
+            if (Schema::hasColumn($table, 'room'))         $row['room']       = $entry['location'] ?? null;
+            if (Schema::hasColumn($table, 'location'))     $row['location']   = $entry['location'] ?? null;
+            if (Schema::hasColumn($table, 'capacity'))     $row['capacity']   = $entry['capacity'] ?? 0;
 
             foreach (['day', 'time'] as $column) {
-                if (!Schema::hasColumn($table, $column)) {
-                    continue;
+                if (Schema::hasColumn($table, $column)) {
+                    $row[$column] = $entry[$column] ?? null;
                 }
-
-                $row[$column] = $entry[$column] ?? null;
             }
 
             foreach (['instructor', 'instructor_name'] as $column) {
@@ -565,11 +529,7 @@ class RegistrationController extends Controller
         $this->insertClassEntries($table, $subjectId, $entries);
     }
 
-    private function registeredSubjectRows(
-        $studentId,
-        bool $includeApprovalStatus = false,
-        bool $onlyUnapproved = false
-    )
+    private function registeredSubjectRows($studentId, bool $includeApprovalStatus = false, bool $onlyUnapproved = false)
     {
         if (!Schema::hasTable('subject_registrations')) {
             return collect();
@@ -616,33 +576,29 @@ class RegistrationController extends Controller
         }
 
         return $query->select($selects)->get()->map(function ($subject) use ($includeApprovalStatus) {
-            $sections = $this->getSubjectTimetableEntries('lecture_section', $subject->id, 'L');
-            $tutorials = $this->getSubjectTimetableEntries('lab_section', $subject->id, 'B');
+            $sections       = $this->getSubjectTimetableEntries('lecture_section', $subject->id, 'L');
+            $tutorials      = $this->getSubjectTimetableEntries('lab_section', $subject->id, 'B');
             $legacySessions = $this->getSubjectTimetableEntries('class_sessions', $subject->id);
-            $timetable = array_merge($sections, $tutorials, $legacySessions);
-            $timing = $this->selectedTimetableDetails(
-                $timetable,
-                $subject->section ?? null,
-                $subject->tutorial_lab ?? null
-            );
+            $timetable      = array_merge($sections, $tutorials, $legacySessions);
+            $timing         = $this->selectedTimetableDetails($timetable, $subject->section ?? null, $subject->tutorial_lab ?? null);
 
             $row = [
-                'id' => $subject->id,
+                'id'              => $subject->id,
                 'registration_id' => $subject->registration_id,
-                'code' => $subject->code,
-                'name' => $subject->name,
-                'credit_hour' => $subject->credit_hour,
-                'examination' => $subject->examination ?? null,
-                'exam_date' => $subject->exam_date ?? null,
-                'exam_period' => $subject->exam_period ?? null,
-                'section' => $timing['section'],
-                'tutorial_lab' => $timing['tutorial_lab'],
-                'time_summary' => $timing['time_summary'],
-                'instructors' => $this->getSubjectInstructors($subject->id),
+                'code'            => $subject->code,
+                'name'            => $subject->name,
+                'credit_hour'     => $subject->credit_hour,
+                'examination'     => $subject->examination ?? null,
+                'exam_date'       => $subject->exam_date ?? null,
+                'exam_period'     => $subject->exam_period ?? null,
+                'section'         => $timing['section'],
+                'tutorial_lab'    => $timing['tutorial_lab'],
+                'time_summary'    => $timing['time_summary'],
+                'instructors'     => $this->getSubjectInstructors($subject->id),
             ];
 
             if ($includeApprovalStatus) {
-                $row['approval_status'] = $subject->approval_status ?? 'Pending';
+                $row['approval_status']  = $subject->approval_status ?? 'Pending';
                 $row['rejection_reason'] = $subject->rejection_reason ?? null;
             }
 
@@ -650,12 +606,8 @@ class RegistrationController extends Controller
         });
     }
 
-    private function findRegistrationClash(
-        int $studentId,
-        int $subjectId,
-        ?string $section,
-        ?string $tutorialLab
-    ): ?array {
+    private function findRegistrationClash(int $studentId, int $subjectId, ?string $section, ?string $tutorialLab): ?array
+    {
         if (!Schema::hasTable('subject_registrations')) {
             return null;
         }
@@ -679,11 +631,7 @@ class RegistrationController extends Controller
             return null;
         }
 
-        $selects = [
-            'subjects.id',
-            'subjects.code',
-            'subjects.name',
-        ];
+        $selects = ['subjects.id', 'subjects.code', 'subjects.name'];
 
         foreach (['section', 'tutorial_lab'] as $column) {
             if (Schema::hasColumn('subject_registrations', $column)) {
@@ -718,7 +666,7 @@ class RegistrationController extends Controller
                     return [
                         'code' => (string) $registeredSubject->code,
                         'name' => (string) $registeredSubject->name,
-                        'day' => (string) ($newEntry['day'] ?? ''),
+                        'day'  => (string) ($newEntry['day'] ?? ''),
                         'time' => (string) ($newEntry['time'] ?? ''),
                     ];
                 }
@@ -730,12 +678,12 @@ class RegistrationController extends Controller
 
     private function selectedTimetableEntries(array $timetable, ?string $section, ?string $tutorialLab): array
     {
-        $selected = [];
-        $section = (string) ($section ?? '');
+        $selected    = [];
+        $section     = (string) ($section ?? '');
         $tutorialLab = (string) ($tutorialLab ?? '');
 
         foreach ($timetable as $entry) {
-            $mode = $entry['mode'] ?? '';
+            $mode         = $entry['mode'] ?? '';
             $entrySection = (string) ($entry['section'] ?? '');
 
             if ($section === '' && $mode === 'L' && $entrySection !== '') {
@@ -746,14 +694,14 @@ class RegistrationController extends Controller
                 $tutorialLab = $entrySection;
             }
 
-            $isSelectedLecture = $mode === 'L' && $entrySection === $section;
+            $isSelectedLecture  = $mode === 'L' && $entrySection === $section;
             $isSelectedTutorial = $mode === 'B' && $entrySection === $tutorialLab;
 
             if (!$isSelectedLecture && !$isSelectedTutorial) {
                 continue;
             }
 
-            $day = trim((string) ($entry['day'] ?? ''));
+            $day  = trim((string) ($entry['day'] ?? ''));
             $time = trim((string) ($entry['time'] ?? ''));
 
             if ($day === '' || $time === '') {
@@ -775,7 +723,7 @@ class RegistrationController extends Controller
             return false;
         }
 
-        $firstRange = $this->timetableTimeRange($first['time'] ?? '');
+        $firstRange  = $this->timetableTimeRange($first['time'] ?? '');
         $secondRange = $this->timetableTimeRange($second['time'] ?? '');
 
         if ($firstRange === null || $secondRange === null) {
@@ -810,16 +758,13 @@ class RegistrationController extends Controller
         }
 
         $start = $this->timeToMinutes($parts[0]);
-        $end = $this->timeToMinutes($parts[1]);
+        $end   = $this->timeToMinutes($parts[1]);
 
         if ($start === null || $end === null || $start >= $end) {
             return null;
         }
 
-        return [
-            'start' => $start,
-            'end' => $end,
-        ];
+        return ['start' => $start, 'end' => $end];
     }
 
     private function timeToMinutes(string $time): ?int
@@ -829,7 +774,7 @@ class RegistrationController extends Controller
             return null;
         }
 
-        $hour = (int) $matches[1];
+        $hour   = (int) $matches[1];
         $minute = (int) $matches[2];
         $period = isset($matches[3]) && $matches[3] !== '' ? $matches[3] : null;
 
@@ -842,11 +787,9 @@ class RegistrationController extends Controller
                 return null;
             }
 
-            if ($period === 'am') {
-                $hour = $hour === 12 ? 0 : $hour;
-            } else {
-                $hour = $hour === 12 ? 12 : $hour + 12;
-            }
+            $hour = $period === 'am'
+                ? ($hour === 12 ? 0 : $hour)
+                : ($hour === 12 ? 12 : $hour + 12);
         }
 
         return ($hour * 60) + $minute;
@@ -863,7 +806,7 @@ class RegistrationController extends Controller
         if ($registrations !== null) {
             $statuses = $registrations
                 ->pluck('approval_status')
-                ->map(fn ($status) => $status ?: 'Pending')
+                ->map(fn($status) => $status ?: 'Pending')
                 ->unique()
                 ->values();
 
@@ -882,16 +825,12 @@ class RegistrationController extends Controller
             ->select('student_id', 'approval_status')
             ->get()
             ->groupBy('student_id')
-            ->map(fn ($rows) => $this->approvalStatusSummary($rows));
-
-        $pending  = $students->filter(fn($s) => $s === 'Pending')->count();
-        $approved = $students->filter(fn($s) => $s === 'Approved')->count();
-        $rejected = $students->filter(fn($s) => $s === 'Rejected')->count();
+            ->map(fn($rows) => $this->approvalStatusSummary($rows));
 
         return [
-            'pending'  => $pending,
-            'approved' => $approved,
-            'rejected' => $rejected,
+            'pending'  => $students->filter(fn($s) => $s === 'Pending')->count(),
+            'approved' => $students->filter(fn($s) => $s === 'Approved')->count(),
+            'rejected' => $students->filter(fn($s) => $s === 'Rejected')->count(),
         ];
     }
 
@@ -900,13 +839,7 @@ class RegistrationController extends Controller
         $student = DB::table('students')
             ->join('users', 'students.user_id', '=', 'users.id')
             ->where('students.id', $studentId)
-            ->select(
-                'students.id as student_id',
-                'users.name',
-                'students.matric_no',
-                'students.programme',
-                'students.year'
-            )
+            ->select('students.id as student_id', 'users.name', 'students.matric_no', 'students.programme', 'students.year')
             ->first();
 
         if (!$student) {
@@ -915,11 +848,11 @@ class RegistrationController extends Controller
 
         return [
             'student_id' => $student->student_id,
-            'name' => $student->name,
-            'matric_no' => $student->matric_no,
-            'programme' => $student->programme,
-            'year' => $student->year,
-            'advisor' => $this->getStudentAdvisor((int) $student->student_id),
+            'name'       => $student->name,
+            'matric_no'  => $student->matric_no,
+            'programme'  => $student->programme,
+            'year'       => $student->year,
+            'advisor'    => $this->getStudentAdvisor((int) $student->student_id),
         ];
     }
 
@@ -929,9 +862,7 @@ class RegistrationController extends Controller
             return '-';
         }
 
-        return (string) (DB::table('students')
-            ->where('id', $studentId)
-            ->value('advisor') ?? '-');
+        return (string) (DB::table('students')->where('id', $studentId)->value('advisor') ?? '-');
     }
 
     private function getSubjectInstructors(int $subjectId): array
@@ -984,21 +915,19 @@ class RegistrationController extends Controller
                 ->get()
                 ->map(function ($row) {
                     $sessionType = strtolower((string) ($row->session_type ?? ''));
-                    $mode = str_contains($sessionType, 'tutorial') || str_contains($sessionType, 'lab')
-                        ? 'B'
-                        : 'L';
-                    $startTime = (string) ($row->start_time ?? '');
-                    $endTime = (string) ($row->end_time ?? '');
-                    $start = $startTime === '' ? '' : substr($startTime, 0, 5);
-                    $end = $endTime === '' ? '' : substr($endTime, 0, 5);
+                    $mode        = str_contains($sessionType, 'tutorial') || str_contains($sessionType, 'lab') ? 'B' : 'L';
+                    $startTime   = (string) ($row->start_time ?? '');
+                    $endTime     = (string) ($row->end_time ?? '');
+                    $start       = $startTime === '' ? '' : substr($startTime, 0, 5);
+                    $end         = $endTime === '' ? '' : substr($endTime, 0, 5);
 
                     return [
-                        'id' => $row->id ?? null,
-                        'section' => (string) ($row->section ?? ''),
-                        'day' => $row->class_date ? strtoupper(date('D', strtotime($row->class_date))) : '',
-                        'time' => trim($start . '-' . $end, '-'),
+                        'id'       => $row->id ?? null,
+                        'section'  => (string) ($row->section ?? ''),
+                        'day'      => $row->class_date ? strtoupper(date('D', strtotime($row->class_date))) : '',
+                        'time'     => trim($start . '-' . $end, '-'),
                         'location' => (string) ($row->venue ?? ''),
-                        'mode' => $mode,
+                        'mode'     => $mode,
                         'capacity' => '',
                         'instructor' => '',
                     ];
@@ -1013,7 +942,6 @@ class RegistrationController extends Controller
                     return (string) $row->{$column};
                 }
             }
-
             return '';
         };
 
@@ -1021,26 +949,21 @@ class RegistrationController extends Controller
             ->where('subject_id', $subjectId)
             ->get()
             ->map(function ($row) use ($mode, $value, $subjectId) {
-                $section = $value(
-                    $row,
-                    ['section_name', 'section', 'name', 'lab_name', 'tutorial_name']
-                );
-                $capacity = $value($row, ['capacity']);
-                $usedCapacity = $this->registeredSlotCount($subjectId, $section, $mode);
-                $capacityValue = is_numeric($capacity) ? (int) $capacity : null;
+                $section        = $value($row, ['section_name', 'section', 'name', 'lab_name', 'tutorial_name']);
+                $capacity       = $value($row, ['capacity']);
+                $usedCapacity   = $this->registeredSlotCount($subjectId, $section, $mode);
+                $capacityValue  = is_numeric($capacity) ? (int) $capacity : null;
 
                 return [
-                    'id' => $row->id ?? null,
-                    'section' => $section,
-                    'day' => $value($row, ['day']),
-                    'time' => $value($row, ['time']),
-                    'location' => $value($row, ['room', 'location']),
-                    'mode' => $mode,
-                    'capacity' => $capacity,
-                    'remaining_capacity' => $capacityValue === null
-                        ? ''
-                        : max(0, $capacityValue - $usedCapacity),
-                    'instructor' => $value($row, ['instructor', 'instructor_name']),
+                    'id'                 => $row->id ?? null,
+                    'section'            => $section,
+                    'day'                => $value($row, ['day']),
+                    'time'               => $value($row, ['time']),
+                    'location'           => $value($row, ['room', 'location']),
+                    'mode'               => $mode,
+                    'capacity'           => $capacity,
+                    'remaining_capacity' => $capacityValue === null ? '' : max(0, $capacityValue - $usedCapacity),
+                    'instructor'         => $value($row, ['instructor', 'instructor_name']),
                 ];
             })
             ->values()
@@ -1049,12 +972,12 @@ class RegistrationController extends Controller
 
     private function selectedTimetableDetails(array $timetable, ?string $section, ?string $tutorialLab): array
     {
-        $matches = [];
-        $section = (string) ($section ?? '');
+        $matches     = [];
+        $section     = (string) ($section ?? '');
         $tutorialLab = (string) ($tutorialLab ?? '');
 
         foreach ($timetable as $entry) {
-            $mode = $entry['mode'] ?? '';
+            $mode         = $entry['mode'] ?? '';
             $entrySection = (string) ($entry['section'] ?? '');
 
             if ($section === '' && $mode === 'L' && $entrySection !== '') {
@@ -1065,15 +988,15 @@ class RegistrationController extends Controller
                 $tutorialLab = $entrySection;
             }
 
-            $isSelectedLecture = $mode === 'L' && $entrySection === $section;
+            $isSelectedLecture  = $mode === 'L' && $entrySection === $section;
             $isSelectedTutorial = $mode === 'B' && $entrySection === $tutorialLab;
 
             if (!$isSelectedLecture && !$isSelectedTutorial) {
                 continue;
             }
 
-            $time = trim((string) ($entry['time'] ?? ''));
-            $day = trim((string) ($entry['day'] ?? ''));
+            $time      = trim((string) ($entry['time'] ?? ''));
+            $day       = trim((string) ($entry['day'] ?? ''));
             $modeLabel = $mode === 'B' ? 'B' : 'L';
 
             if ($time !== '' || $day !== '') {
@@ -1082,7 +1005,7 @@ class RegistrationController extends Controller
         }
 
         return [
-            'section' => $section,
+            'section'      => $section,
             'tutorial_lab' => $tutorialLab,
             'time_summary' => implode(' | ', $matches),
         ];
@@ -1090,7 +1013,7 @@ class RegistrationController extends Controller
 
     private function tutorialMatchesLectureSection(?string $section, ?string $tutorialLab): bool
     {
-        $sectionPrefix = $this->sectionNumericPrefix($section);
+        $sectionPrefix  = $this->sectionNumericPrefix($section);
         $tutorialPrefix = $this->sectionNumericPrefix($tutorialLab);
 
         if ($sectionPrefix === '' || $tutorialPrefix === '') {
@@ -1139,5 +1062,30 @@ class RegistrationController extends Controller
 
         return $query->count();
     }
+    public function getSubjectSections(Request $request, $subjectId)
+    {
+        $type = $request->query('type', 'lecture');
+        $isLab = $type === 'lab';
+        $table = $isLab ? 'lab_section' : 'lecture_section';
+        $nameColumn = $isLab ? 'lab_name' : 'section_name';
 
+        if (!Schema::hasTable($table)) {
+            return response()->json([]);
+        }
+
+        $sections = DB::table($table)
+            ->where('subject_id', $subjectId)
+            ->select(
+                'id',
+                "$nameColumn as name",
+                'day',
+                'time',
+                'location',
+                'capacity',
+                'instructor_name'
+            )
+            ->get();
+
+        return response()->json($sections);
+    }
 }

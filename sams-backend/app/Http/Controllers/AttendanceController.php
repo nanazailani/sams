@@ -506,36 +506,60 @@ class AttendanceController extends Controller
      */
     public function getLecturerClasses($lecturerId)
     {
-        // Resolve lecturers.id from user_id
-        $lecturer = DB::table('lecturers')
-            ->where('user_id', $lecturerId)
-            ->first();
+        $lecturer = DB::table('lecturers')->where('id', $lecturerId)->first();
+        $userIdForSessions = $lecturer?->user_id ?? $lecturerId;
 
-        $lecturerRecordId = $lecturer?->id ?? $lecturerId;
-
-        $courseClasses = ClassSession::with('subject')
-            ->where('lecturer_id', $lecturerId)  // class_sessions pakai users.id
-            ->orderBy('class_date')
-            ->orderBy('start_time')
+        // Ambil subjects yang lecturer ni assigned to
+        $subjects = DB::table('subjects')
+            ->where('lecturer_id', $lecturerId)  // subjects.lecturer_id = lecturers.id
             ->get()
-            ->map(function ($class) {
-                return [
-                    'id'             => $class->id,
-                    'subject_id'     => $class->subject_id,
-                    'subject_code'   => $class->subject->code ?? '',
-                    'subject_name'   => $class->subject->name ?? '',
-                    'class_date'     => $class->class_date,
-                    'start_time'     => $class->start_time,
-                    'end_time'       => $class->end_time,
-                    'session_type'   => $class->session_type ?? '',
-                    'week_number'    => $class->week_number ?? '',
-                    'attendance_type' => 'course',
-                ];
-            });
+            ->map(function ($subject) use ($userIdForSessions) {
+                // Ambil sessions untuk subject ni
+                $sessions = DB::table('class_sessions')
+                    ->where('subject_id', $subject->id)
+                    ->where('lecturer_id', $userIdForSessions)
+                    ->orderBy('class_date')
+                    ->orderBy('start_time')
+                    ->get()
+                    ->map(function ($class) use ($subject) {
+                        return [
+                            'id'              => $class->id,
+                            'subject_id'      => $subject->id,
+                            'subject_code'    => $subject->code,
+                            'subject_name'    => $subject->name,
+                            'class_date'      => $class->class_date,
+                            'start_time'      => $class->start_time,
+                            'end_time'        => $class->end_time,
+                            'session_type'    => $class->session_type ?? '',
+                            'week_number'     => $class->week_number ?? '',
+                            'attendance_type' => 'course',
+                        ];
+                    });
 
+                // Kalau takde session pun, still return subject dengan placeholder
+                if ($sessions->isEmpty()) {
+                    return [[
+                        'id'              => null,
+                        'subject_id'      => $subject->id,
+                        'subject_code'    => $subject->code,
+                        'subject_name'    => $subject->name,
+                        'class_date'      => null,
+                        'start_time'      => null,
+                        'end_time'        => null,
+                        'session_type'    => '',
+                        'week_number'     => '',
+                        'attendance_type' => 'course',
+                    ]];
+                }
+
+                return $sessions->toArray();
+            })
+            ->flatten(1);
+
+        // Modules — sama macam sebelum
         $moduleClasses = DB::table('module_schedules')
             ->join('modules', 'module_schedules.module_id', '=', 'modules.id')
-            ->where('module_schedules.lecturer_id', $lecturerRecordId)  // module_schedules pakai lecturers.id
+            ->where('module_schedules.lecturer_id', $lecturerId)
             ->orderBy('module_schedules.class_date')
             ->orderBy('module_schedules.start_time')
             ->select(
@@ -552,21 +576,21 @@ class AttendanceController extends Controller
             ->get()
             ->map(function ($class) {
                 return [
-                    'id'             => $class->id,
-                    'module_id'      => $class->module_id,
-                    'module_code'    => $class->module_code,
-                    'module_name'    => $class->module_name,
-                    'class_date'     => $class->class_date,
-                    'start_time'     => $class->start_time,
-                    'end_time'       => $class->end_time,
-                    'session_type'   => $class->session_type ?? '',
-                    'week_number'    => $class->week_number ?? '',
+                    'id'              => $class->id,
+                    'module_id'       => $class->module_id,
+                    'module_code'     => $class->module_code,
+                    'module_name'     => $class->module_name,
+                    'class_date'      => $class->class_date,
+                    'start_time'      => $class->start_time,
+                    'end_time'        => $class->end_time,
+                    'session_type'    => $class->session_type ?? '',
+                    'week_number'     => $class->week_number ?? '',
                     'attendance_type' => 'module',
                 ];
             });
 
         return response()->json(
-            $courseClasses->concat($moduleClasses)->values()
+            $subjects->concat($moduleClasses)->values()
         );
     }
 
@@ -739,5 +763,42 @@ class AttendanceController extends Controller
         }
 
         return null;
+    }
+
+    public function createClassSession(Request $request)
+    {
+        $request->validate([
+            'subject_id'   => 'required|exists:subjects,id',
+            'lecturer_id'  => 'required|integer',
+            'section'      => 'required|string',
+            'class_date'   => 'required|date',
+            'start_time'   => 'required',
+            'end_time'     => 'required',
+            'venue'        => 'required|string',
+            'session_type' => 'nullable|string',
+            'week_number'  => 'nullable|integer',
+        ]);
+
+        $lecturer = DB::table('lecturers')->where('id', $request->lecturer_id)->first();
+        $userIdForSessions = $lecturer?->user_id ?? $request->lecturer_id;
+
+        $id = DB::table('class_sessions')->insertGetId([
+            'subject_id'   => $request->subject_id,
+            'lecturer_id'  => $userIdForSessions,
+            'section'      => $request->section,
+            'class_date'   => $request->class_date,
+            'start_time'   => $request->start_time,
+            'end_time'     => $request->end_time,
+            'venue'        => $request->venue,
+            'session_type' => $request->session_type ?? 'Lecture',
+            'week_number'  => $request->week_number,
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Class session created successfully',
+            'id'      => $id,
+        ], 201);
     }
 }

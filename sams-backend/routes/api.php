@@ -40,6 +40,8 @@ Route::post(
 );
 Route::put('/attendance/records/{attendanceId}', [AttendanceController::class, 'updateAttendanceRecord']);
 Route::delete('/attendance/records/{attendanceId}', [AttendanceController::class, 'deleteAttendanceRecord']);
+Route::post('/class-sessions', [AttendanceController::class, 'createClassSession']);
+Route::get('/subjects/{subjectId}/sections', [RegistrationController::class, 'getSubjectSections']);
 
 //meor
 Route::get('/modules', [ModuleController::class, 'index']);
