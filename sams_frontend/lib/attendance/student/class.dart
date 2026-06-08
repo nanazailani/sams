@@ -14,15 +14,44 @@ class StudentClassPage extends StatefulWidget {
 }
 
 class _StudentClassPageState extends State<StudentClassPage> {
+  static const _baseUrl =
+      'https://darkgrey-lyrebird-505549.hostingersite.com/api';
+
   int studentId = 0;
   List<Map<String, dynamic>> bookedCourses = [];
   List<Map<String, dynamic>> bookedModules = [];
   bool isLoading = true;
 
+  // --- Lock state ---
+  bool _isBlocked = false;
+
   @override
   void initState() {
     super.initState();
     loadSessionAndFetch();
+    _checkLockStatus();
+  }
+
+  // --- Lock check ---
+  Future<void> _checkLockStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sid = prefs.getInt('student_id') ?? 0;
+      final uri = Uri.parse('$_baseUrl/week-lock/status')
+          .replace(queryParameters: {'student_id': sid.toString()});
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _isBlocked = data['student_blocked'] == true;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Lock check error: $e');
+    }
   }
 
   Future<void> loadSessionAndFetch() async {
@@ -44,66 +73,67 @@ class _StudentClassPageState extends State<StudentClassPage> {
     await fetchRegisteredSubjectsWithId(studentId);
   }
 
-Future<void> fetchRegisteredSubjectsWithId(int id) async {
-  setState(() => isLoading = true);
+  Future<void> fetchRegisteredSubjectsWithId(int id) async {
+    setState(() => isLoading = true);
 
-  if (id == 0) {
-    setState(() {
-      bookedCourses = [];
-      bookedModules = [];
-      isLoading = false;
-    });
-    return;
-  }
-
-  try {
-    final response = await http
-        .get(Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$id/subjects'))
-        .timeout(const Duration(seconds: 10));
-
-    final moduleResponse = await http
-        .get(Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$id/modules'))
-        .timeout(const Duration(seconds: 10));
-
-    List data = [];
-    List moduleData = [];
-
-    if (response.statusCode == 200) {
-      data = json.decode(response.body);
+    if (id == 0) {
+      setState(() {
+        bookedCourses = [];
+        bookedModules = [];
+        isLoading = false;
+      });
+      return;
     }
 
-    if (moduleResponse.statusCode == 200) {
-      moduleData = json.decode(moduleResponse.body);
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/student/$id/subjects'))
+          .timeout(const Duration(seconds: 10));
+
+      final moduleResponse = await http
+          .get(Uri.parse('$_baseUrl/student/$id/modules'))
+          .timeout(const Duration(seconds: 10));
+
+      List data = [];
+      List moduleData = [];
+
+      if (response.statusCode == 200) {
+        data = json.decode(response.body);
+      }
+
+      if (moduleResponse.statusCode == 200) {
+        moduleData = json.decode(moduleResponse.body);
+      }
+
+      setState(() {
+        bookedCourses = data.map<Map<String, dynamic>>((item) => {
+              'id': item['id'],
+              'subject_id': item['subject_id'],
+              'code': item['code']?.toString() ?? '',
+              'name': item['name']?.toString() ?? '',
+              'attendanceEnabled': true,
+            }).toList();
+
+        final seenModuleIds = <String>{};
+        bookedModules = moduleData
+            .where((item) =>
+                seenModuleIds.add(item['module_id'].toString()))
+            .map<Map<String, dynamic>>((item) => {
+                  'id': item['id'],
+                  'module_id': item['module_id'],
+                  'code': item['code']?.toString() ?? '',
+                  'name': item['name']?.toString() ?? '',
+                  'attendanceEnabled': true,
+                })
+            .toList();
+
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error fetching data: $e');
+      setState(() => isLoading = false);
     }
-
-    setState(() {
-      bookedCourses = data.map<Map<String, dynamic>>((item) => {
-            'id': item['id'],
-            'subject_id': item['subject_id'],
-            'code': item['code']?.toString() ?? '',
-            'name': item['name']?.toString() ?? '',
-            'attendanceEnabled': true,
-          }).toList();
-
-      final seenModuleIds = <String>{};
-      bookedModules = moduleData
-          .where((item) => seenModuleIds.add(item['module_id'].toString()))
-          .map<Map<String, dynamic>>((item) => {
-                'id': item['id'],
-                'module_id': item['module_id'],
-                'code': item['code']?.toString() ?? '',
-                'name': item['name']?.toString() ?? '',
-                'attendanceEnabled': true,
-              })
-          .toList();
-
-      isLoading = false;
-    });
-  } catch (e) {
-    debugPrint('Error fetching data: $e');
-    setState(() => isLoading = false);
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +145,8 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
           children: [
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 22, vertical: 28),
               decoration: const BoxDecoration(
                 color: Color(0xFF67C5C4),
               ),
@@ -136,10 +167,50 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                     ? const Center(child: CircularProgressIndicator())
                     : SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 20, 16, 24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // ── WARNING BANNER ──
+                            if (_isBlocked)
+                              Container(
+                                width: double.infinity,
+                                margin:
+                                    const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF3CD),
+                                  borderRadius:
+                                      BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: const Color(0xFFFFD54F)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: const [
+                                    Icon(Icons.lock,
+                                        color: Color(0xFFF9A825),
+                                        size: 18),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Reminder: Your tuition has not been fully paid. '
+                                        'Academic modules are locked after Week 5 until '
+                                        'payment is completed. Please proceed to the '
+                                        'Payment module to settle your balance.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF7B5800),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
                             const SizedBox(height: 18),
                             const Text(
                               'Booked Course',
@@ -157,7 +228,8 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                                 padding: const EdgeInsets.all(18),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius:
+                                      BorderRadius.circular(20),
                                 ),
                                 child: const Text(
                                   'No registered course yet.',
@@ -171,12 +243,18 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                             else
                               ...bookedCourses.map(
                                 (item) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 14),
+                                  padding: const EdgeInsets.only(
+                                      bottom: 14),
                                   child: _buildBookingCard(
-                                    subjectId: int.tryParse(item['subject_id'].toString()) ?? 0,
+                                    subjectId: int.tryParse(
+                                            item['subject_id']
+                                                .toString()) ??
+                                        0,
                                     code: item['code'] as String,
                                     name: item['name'] as String,
-                                    attendanceEnabled: item['attendanceEnabled'] as bool,
+                                    attendanceEnabled:
+                                        item['attendanceEnabled']
+                                            as bool,
                                     attendanceType: 'course',
                                     canDrop: true,
                                   ),
@@ -199,7 +277,8 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                                 padding: const EdgeInsets.all(18),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius:
+                                      BorderRadius.circular(20),
                                 ),
                                 child: const Text(
                                   'No registered module yet.',
@@ -213,12 +292,18 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                             else
                               ...bookedModules.map(
                                 (item) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 14),
+                                  padding: const EdgeInsets.only(
+                                      bottom: 14),
                                   child: _buildBookingCard(
-                                    subjectId: int.tryParse(item['module_id'].toString()) ?? 0,
+                                    subjectId: int.tryParse(
+                                            item['module_id']
+                                                .toString()) ??
+                                        0,
                                     code: item['code'] as String,
                                     name: item['name'] as String,
-                                    attendanceEnabled: item['attendanceEnabled'] as bool,
+                                    attendanceEnabled:
+                                        item['attendanceEnabled']
+                                            as bool,
                                     attendanceType: 'module',
                                     canDrop: false,
                                   ),
@@ -245,7 +330,8 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
@@ -305,27 +391,37 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                   spacing: 10,
                   runSpacing: 10,
                   children: [
+                    // View Course — blocked when _isBlocked
                     _buildActionButton(
                       label: 'View Course',
-                      isEnabled: true,
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ViewCoursePage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildActionButton(
-                      label: 'Submit Attendance',
-                      isEnabled: attendanceEnabled,
-                      onPressed: attendanceEnabled
-                          ? () {
+                      isEnabled: !_isBlocked,
+                      onPressed: _isBlocked
+                          ? null
+                          : () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => StudentAttendancePage(
+                                  builder: (context) =>
+                                      const ViewCoursePage(),
+                                ),
+                              );
+                            },
+                    ),
+                    // Submit Attendance — blocked when _isBlocked
+                    _buildActionButton(
+                      label: _isBlocked
+                          ? 'Locked'
+                          : 'Submit Attendance',
+                      isEnabled:
+                          !_isBlocked && attendanceEnabled,
+                      onPressed: _isBlocked || !attendanceEnabled
+                          ? null
+                          : () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      StudentAttendancePage(
                                     studentId: studentId,
                                     subjectId: subjectId,
                                     subjectCode: code,
@@ -334,8 +430,7 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
                                   ),
                                 ),
                               );
-                            }
-                          : null,
+                            },
                     ),
                   ],
                 ),
@@ -344,46 +439,59 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
           ),
           if (canDrop) ...[
             const SizedBox(width: 10),
-            Align(
+              Align(
               alignment: Alignment.topRight,
               child: SizedBox(
-                width: 58,
-                height: 30,
-                child: ElevatedButton(
-                  onPressed: () => _confirmDropSubject(subjectId, code, name),
-                  style: ElevatedButton.styleFrom(
-                    elevation: 0,
-                    backgroundColor: const Color(0xFFFF2338),
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Drop',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Nunito',
-                    ),
-                  ),
+              width: 58,
+              height: 30,
+              child: ElevatedButton(
+              onPressed: _isBlocked
+            ? null
+            : () => _confirmDropSubject(
+                  subjectId,
+                  code,
+                  name,
                 ),
-              ),
-            ),
-          ],
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: _isBlocked
+              ? const Color(0xFFE5E5E7)
+              : const Color(0xFFFF2338),
+          foregroundColor: _isBlocked
+              ? const Color(0xFFB8B8BC)
+              : Colors.white,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Text(
+          _isBlocked ? 'Locked' : 'Drop',
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Nunito',
+          ),
+        ),
+      ),
+    ),
+  ),
+],
         ],
       ),
     );
   }
 
-  Future<void> _confirmDropSubject(int subjectId, String code, String name) async {
+  Future<void> _confirmDropSubject(
+      int subjectId, String code, String name) async {
     final shouldDrop = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
         title: const Text('Drop Subject'),
-        content: Text('Are you sure you want to drop $code - $name?'),
+        content:
+            Text('Are you sure you want to drop $code - $name?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -414,7 +522,7 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
       final response = await http
           .delete(
             Uri.parse(
-              'https://darkgrey-lyrebird-505549.hostingersite.com/api/students/$studentId/registered-subjects/$subjectId',
+              '$_baseUrl/students/$studentId/registered-subjects/$subjectId',
             ),
           )
           .timeout(const Duration(seconds: 10));
@@ -440,7 +548,9 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
@@ -457,10 +567,12 @@ Future<void> fetchRegisteredSubjectsWithId(int id) async {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          backgroundColor:
-              isEnabled ? const Color(0xFF67C5C4) : const Color(0xFFE5E5E7),
-          foregroundColor:
-              isEnabled ? Colors.white : const Color(0xFFB8B8BC),
+          backgroundColor: isEnabled
+              ? const Color(0xFF67C5C4)
+              : const Color(0xFFE5E5E7),
+          foregroundColor: isEnabled
+              ? Colors.white
+              : const Color(0xFFB8B8BC),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),

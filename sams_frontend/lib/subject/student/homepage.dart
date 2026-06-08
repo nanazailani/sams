@@ -25,9 +25,7 @@ class _StudentHomepageState extends State<StudentHomepage> {
   static const _backgroundColor = Color(0xFFF3F1F2);
   static const _semester = 'SEMESTER II ACADEMIC SESSION 2025/2026';
 
-  //static const _apiBaseUrl = 'http://10.0.2.2:8000/api';
   static const _apiBaseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
-
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -44,11 +42,15 @@ class _StudentHomepageState extends State<StudentHomepage> {
   String? _registeredSubjectsError;
   bool _hasShownRejectionNotice = false;
 
+  // --- Lock state ---
+  bool _isBlocked = false;
+
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_filterSubjects);
     _loadData();
+    _checkLockStatus();
   }
 
   @override
@@ -63,6 +65,28 @@ class _StudentHomepageState extends State<StudentHomepage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // --- Lock check ---
+  Future<void> _checkLockStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final studentId = prefs.getInt('student_id') ?? 0;
+      final uri = Uri.parse('$_apiBaseUrl/week-lock/status')
+          .replace(queryParameters: {'student_id': studentId.toString()});
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _isBlocked = data['student_blocked'] == true;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Lock check error: $e');
+    }
   }
 
   Future<void> _logout() async {
@@ -80,7 +104,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     final prefs = await SharedPreferences.getInstance();
     final savedStudentId = prefs.getInt('student_id') ?? 0;
     final savedUserId = prefs.getInt('user_id') ?? 0;
-    final resolvedStudentId = savedStudentId != 0 ? savedStudentId : savedUserId;
+    final resolvedStudentId =
+        savedStudentId != 0 ? savedStudentId : savedUserId;
 
     setState(() {
       _studentId = resolvedStudentId;
@@ -127,7 +152,6 @@ class _StudentHomepageState extends State<StudentHomepage> {
       debugPrint('Student info error: $e');
       if (!mounted) return;
       setState(() {
-        // _errorMessage = 'Cannot connect to backend at 127.0.0.1:8000.';
         _errorMessage = 'Cannot connect to backend at 127.0.0.1:8000.';
       });
     }
@@ -138,7 +162,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
       final uri = _studentId == 0
           ? Uri.parse('$_apiBaseUrl/subjects')
           : Uri.parse('$_apiBaseUrl/subjects?student_id=$_studentId');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
       if (response.statusCode != 200) {
@@ -157,7 +182,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
           'code': item['code']?.toString() ?? '',
           'name': item['name']?.toString() ?? '',
           'credit_hour': item['credit_hour'] ?? item['credits'] ?? 0,
-          'instructors': item['instructors'] is List ? item['instructors'] : [],
+          'instructors':
+              item['instructors'] is List ? item['instructors'] : [],
           'is_registered': item['is_registered'] == true,
           'rejection_reason': item['rejection_reason']?.toString(),
         };
@@ -173,17 +199,18 @@ class _StudentHomepageState extends State<StudentHomepage> {
       debugPrint('Subjects error: $e');
       if (!mounted) return;
       setState(() {
-        // _errorMessage = 'Cannot connect to backend at 10.0.2.2:8000.';
         _errorMessage = 'Cannot connect to backend at 127.0.0.1:8000.';
       });
     }
   }
 
-  void _showRejectionNoticeIfNeeded(List<Map<String, dynamic>> subjects) {
+  void _showRejectionNoticeIfNeeded(
+      List<Map<String, dynamic>> subjects) {
     if (_hasShownRejectionNotice) return;
 
     final rejectedSubjects = subjects.where((subject) {
-      final reason = subject['rejection_reason']?.toString().trim() ?? '';
+      final reason =
+          subject['rejection_reason']?.toString().trim() ?? '';
       return reason.isNotEmpty;
     }).toList();
 
@@ -235,7 +262,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     return _registeredSubjects.fold(
       0,
       (total, subject) {
-        final credit = int.tryParse(subject['credit_hour'].toString()) ?? 0;
+        final credit =
+            int.tryParse(subject['credit_hour'].toString()) ?? 0;
         return total + credit;
       },
     );
@@ -250,7 +278,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     });
     try {
       final response = await http
-          .get(Uri.parse('$_apiBaseUrl/students/$_studentId/registered-subjects'))
+          .get(Uri.parse(
+              '$_apiBaseUrl/students/$_studentId/registered-subjects'))
           .timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
@@ -265,11 +294,13 @@ class _StudentHomepageState extends State<StudentHomepage> {
               .toList();
         });
       } else {
-        debugPrint('Registered subjects failed: ${response.statusCode}');
+        debugPrint(
+            'Registered subjects failed: ${response.statusCode}');
         debugPrint(response.body);
         setState(() {
           _registeredSubjects = [];
-          _registeredSubjectsError = 'Unable to load registered subjects.';
+          _registeredSubjectsError =
+              'Unable to load registered subjects.';
         });
       }
     } catch (e) {
@@ -286,7 +317,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     }
   }
 
-  Future<void> _removeRegisteredSubject(Map<String, dynamic> subject) async {
+  Future<void> _removeRegisteredSubject(
+      Map<String, dynamic> subject) async {
     if (_studentId == 0) return;
 
     try {
@@ -305,7 +337,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
         await _fetchRegisteredSubjects();
       } else {
         final data = jsonDecode(response.body);
-        _showSnack(data['message'] ?? 'Failed to remove subject', isError: true);
+        _showSnack(data['message'] ?? 'Failed to remove subject',
+            isError: true);
       }
     } catch (e) {
       if (!mounted) return;
@@ -318,7 +351,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
 
     try {
       final response = await http
-          .delete(Uri.parse('$_apiBaseUrl/students/$_studentId/registered-subjects'))
+          .delete(Uri.parse(
+              '$_apiBaseUrl/students/$_studentId/registered-subjects'))
           .timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
@@ -328,7 +362,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
         await _fetchRegisteredSubjects();
       } else {
         final data = jsonDecode(response.body);
-        _showSnack(data['message'] ?? 'Failed to clear subjects', isError: true);
+        _showSnack(data['message'] ?? 'Failed to clear subjects',
+            isError: true);
       }
     } catch (e) {
       if (!mounted) return;
@@ -338,14 +373,17 @@ class _StudentHomepageState extends State<StudentHomepage> {
 
   Future<void> _notifyFacultyRegistrar() async {
     if (_studentId == 0) {
-      _showSnack('Please log in again before sending notification.', isError: true);
+      _showSnack(
+          'Please log in again before sending notification.',
+          isError: true);
       return;
     }
 
     try {
       final response = await http
           .post(
-            Uri.parse('$_apiBaseUrl/students/$_studentId/notify-registrar'),
+            Uri.parse(
+                '$_apiBaseUrl/students/$_studentId/notify-registrar'),
             headers: {'Accept': 'application/json'},
           )
           .timeout(const Duration(seconds: 10));
@@ -354,9 +392,11 @@ class _StudentHomepageState extends State<StudentHomepage> {
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
-        _showSnack(data['message'] ?? 'Faculty registrar has been notified.');
+        _showSnack(
+            data['message'] ?? 'Faculty registrar has been notified.');
       } else {
-        _showSnack(data['message'] ?? 'Failed to notify registrar', isError: true);
+        _showSnack(data['message'] ?? 'Failed to notify registrar',
+            isError: true);
       }
     } catch (e) {
       if (!mounted) return;
@@ -399,7 +439,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
                 return Container(
                   decoration: const BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(18)),
                   ),
                   child: Column(
                     children: [
@@ -413,7 +454,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(32, 18, 24, 8),
+                        padding:
+                            const EdgeInsets.fromLTRB(32, 18, 24, 8),
                         child: Row(
                           children: [
                             const Expanded(
@@ -433,11 +475,13 @@ class _StudentHomepageState extends State<StudentHomepage> {
                                       await _clearRegisteredSubjects();
                                       await refreshSheet();
                                     },
-                              icon: const Icon(Icons.delete_outline, size: 14),
+                              icon: const Icon(Icons.delete_outline,
+                                  size: 14),
                               label: const Text('Clear Subject'),
                               style: TextButton.styleFrom(
                                 foregroundColor: Colors.black54,
-                                textStyle: const TextStyle(fontSize: 12),
+                                textStyle:
+                                    const TextStyle(fontSize: 12),
                               ),
                             ),
                           ],
@@ -459,32 +503,39 @@ class _StudentHomepageState extends State<StudentHomepage> {
                                       ),
                                     ),
                                   )
-                            : _registeredSubjects.isEmpty
-                                ? const Center(
-                                    child: Text(
-                                      'No registered subject yet.',
-                                      style: TextStyle(color: Colors.black54),
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    controller: scrollController,
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                                    itemCount: _registeredSubjects.length,
-                                    itemBuilder: (context, index) {
-                                      final subject = _registeredSubjects[index];
-                                      return _RegisteredSubjectCard(
-                                        subject: subject,
-                                        onUpdate: () {
-                                          Navigator.pop(sheetContext);
-                                          widget.onRegisterSubject(subject);
+                                : _registeredSubjects.isEmpty
+                                    ? const Center(
+                                        child: Text(
+                                          'No registered subject yet.',
+                                          style: TextStyle(
+                                              color: Colors.black54),
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        controller: scrollController,
+                                        padding:
+                                            const EdgeInsets.fromLTRB(
+                                                16, 0, 16, 18),
+                                        itemCount:
+                                            _registeredSubjects.length,
+                                        itemBuilder: (context, index) {
+                                          final subject =
+                                              _registeredSubjects[index];
+                                          return _RegisteredSubjectCard(
+                                            subject: subject,
+                                            onUpdate: () {
+                                              Navigator.pop(sheetContext);
+                                              widget.onRegisterSubject(
+                                                  subject);
+                                            },
+                                            onRemove: () async {
+                                              await _removeRegisteredSubject(
+                                                  subject);
+                                              await refreshSheet();
+                                            },
+                                          );
                                         },
-                                        onRemove: () async {
-                                          await _removeRegisteredSubject(subject);
-                                          await refreshSheet();
-                                        },
-                                      );
-                                    },
-                                  ),
+                                      ),
                       ),
                     ],
                   ),
@@ -510,15 +561,57 @@ class _StudentHomepageState extends State<StudentHomepage> {
                 onRefresh: _loadData,
                 child: _isLoading
                     ? const Center(
-                        child: CircularProgressIndicator(color: _primaryColor),
+                        child: CircularProgressIndicator(
+                            color: _primaryColor),
                       )
                     : SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 22, 16, 18),
                         child: Column(
                           children: [
                             _buildInfoTable(),
                             const SizedBox(height: 16),
+
+                            // ── WARNING BANNER (only shows when blocked) ──
+                            if (_isBlocked)
+                              Container(
+                                width: double.infinity,
+                                margin:
+                                    const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF3CD),
+                                  borderRadius:
+                                      BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: const Color(0xFFFFD54F)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: const [
+                                    Icon(Icons.lock,
+                                        color: Color(0xFFF9A825),
+                                        size: 18),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Reminder: Your tuition has not been fully paid. '
+                                        'Academic modules are locked after Week 5 until '
+                                        'payment is completed. Please proceed to the '
+                                        'Payment module to settle your balance.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF7B5800),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
                             _buildSearchBox(),
                             const SizedBox(height: 18),
                             if (_errorMessage != null)
@@ -528,11 +621,14 @@ class _StudentHomepageState extends State<StudentHomepage> {
                             else
                               ..._filteredSubjects.map(
                                 (subject) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
+                                  padding: const EdgeInsets.only(
+                                      bottom: 16),
                                   child: _SubjectCard(
                                     subject: subject,
+                                    isBlocked: _isBlocked,
                                     onRegister: () =>
-                                        widget.onRegisterSubject(subject),
+                                        widget.onRegisterSubject(
+                                            subject),
                                   ),
                                 ),
                               ),
@@ -567,7 +663,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
           ),
           IconButton(
             onPressed: _logout,
-            icon: const Icon(Icons.logout, color: Colors.white, size: 28),
+            icon:
+                const Icon(Icons.logout, color: Colors.white, size: 28),
             tooltip: 'Logout',
           ),
         ],
@@ -613,8 +710,10 @@ class _StudentHomepageState extends State<StudentHomepage> {
       controller: _searchController,
       decoration: InputDecoration(
         hintText: 'SEARCH',
-        hintStyle: const TextStyle(fontSize: 12, color: Colors.black87),
-        prefixIcon: const Icon(Icons.search, color: Colors.black87),
+        hintStyle:
+            const TextStyle(fontSize: 12, color: Colors.black87),
+        prefixIcon:
+            const Icon(Icons.search, color: Colors.black87),
         filled: true,
         fillColor: const Color(0xFFECECEC),
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -624,7 +723,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(9),
-          borderSide: const BorderSide(color: _primaryColor, width: 1.5),
+          borderSide:
+              const BorderSide(color: _primaryColor, width: 1.5),
         ),
       ),
     );
@@ -673,7 +773,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        const Icon(Icons.school, size: 30, color: Colors.black87),
+                        const Icon(Icons.school,
+                            size: 30, color: Colors.black87),
                         Positioned(
                           right: -7,
                           top: -5,
@@ -767,10 +868,12 @@ class _InfoCell extends StatelessWidget {
 class _SubjectCard extends StatelessWidget {
   final Map<String, dynamic> subject;
   final VoidCallback onRegister;
+  final bool isBlocked;
 
   const _SubjectCard({
     required this.subject,
     required this.onRegister,
+    this.isBlocked = false,
   });
 
   @override
@@ -831,11 +934,13 @@ class _SubjectCard extends StatelessWidget {
             width: double.infinity,
             height: 30,
             child: ElevatedButton(
-              onPressed: isRegistered ? null : onRegister,
+              onPressed: isBlocked || isRegistered ? null : onRegister,
               style: ElevatedButton.styleFrom(
                 elevation: 0,
                 backgroundColor: const Color(0xFF35C8C6),
-                disabledBackgroundColor: const Color(0xFFFF1010),
+                disabledBackgroundColor: isBlocked
+                    ? Colors.grey.shade400
+                    : const Color(0xFFFF1010),
                 foregroundColor: Colors.white,
                 disabledForegroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
@@ -843,7 +948,11 @@ class _SubjectCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                isRegistered ? 'Registered' : 'Register Subject',
+                isBlocked
+                    ? 'Access Locked'
+                    : isRegistered
+                        ? 'Registered'
+                        : 'Register Subject',
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -889,7 +998,8 @@ class _RegisteredSubjectCard extends StatelessWidget {
           const SizedBox(
             width: 54,
             child: Center(
-              child: Icon(Icons.school, color: Colors.black87, size: 38),
+              child:
+                  Icon(Icons.school, color: Colors.black87, size: 38),
             ),
           ),
           const SizedBox(width: 8),
@@ -966,7 +1076,8 @@ class _RegisteredSubjectCard extends StatelessWidget {
                   ),
                   child: const Text(
                     'Update',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700),
                   ),
                 ),
               ),

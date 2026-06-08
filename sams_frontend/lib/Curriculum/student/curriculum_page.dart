@@ -27,30 +27,32 @@ class _CurriculumPageState extends State<CurriculumPage> {
   }
 
   Future<void> _checkLockStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final matricNo = prefs.getString('matric_no') ?? '';
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final studentId = prefs.getInt('student_id') ?? 0;
+    print('DEBUG student_id: $studentId'); // add this
 
-      final uri = Uri.parse('$_baseUrl/week-lock/status')
-          .replace(queryParameters: {'matric_no': matricNo});
+    final uri = Uri.parse('$_baseUrl/week-lock/status')
+        .replace(queryParameters: {'student_id': studentId.toString()});
 
-      final response =
-          await http.get(uri).timeout(const Duration(seconds: 10));
+    final response = await http.get(uri).timeout(const Duration(seconds: 10));
+    print('DEBUG response: ${response.body}'); // add this
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _isBlocked = data['student_blocked'] == true;
-        });
-      }
-    } catch (e) {
-      debugPrint('Lock check error: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isCheckingLock = false);
-      }
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      print('DEBUG student_blocked: ${data['student_blocked']}'); // add this
+      setState(() {
+        _isBlocked = data['student_blocked'] == true;
+      });
+    }
+  } catch (e) {
+    print('DEBUG error: $e'); // add this
+  } finally {
+    if (mounted) {
+      setState(() => _isCheckingLock = false);
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {

@@ -54,6 +54,7 @@ class _MainNavigationState extends State<MainNavigation> {
             )
           : RegisterCoursesPage(
               subject: _registeringSubject!,
+              onBack: _closeRegisterCourse,
               onConfirmed: _closeRegisterCourse,
             ),
       const CurriculumPage(),
