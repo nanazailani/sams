@@ -76,6 +76,7 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
   bool _examIsAm = true;
   bool _isSaving = false;
   int _registrarId = 0;
+  int? _selectedLecturerId; // ← TAMBAH
 
   List<_LecturerOption> get _lecturerOptions =>
       _lecturers ?? const <_LecturerOption>[];
@@ -173,6 +174,7 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
           'code': _codeController.text.trim().toUpperCase(),
           'name': _nameController.text.trim(),
           'credit_hour': int.parse(_creditController.text.trim()),
+          'lecturer_id': _selectedLecturerId, // ← TAMBAH
           'registrar_id': _registrarId,
           'examination': _hasExamination,
           'exam_date': _hasExamination ? _examDateController.text.trim() : null,
@@ -335,6 +337,51 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
             if (int.tryParse(value!.trim()) == null) return 'Number only';
             return null;
           },
+        ),
+        const SizedBox(height: 10),
+        // ← TAMBAH: Lecturer dropdown untuk subject
+        Row(
+          children: [
+            const SizedBox(width: 88, child: _FormLabel('Lecturer:')),
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: _selectedLecturerId,
+                decoration: InputDecoration(
+                  isDense: true,
+                  filled: true,
+                  fillColor: const Color(0xFFE2DDDD),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  errorStyle: const TextStyle(height: 0.7, fontSize: 9),
+                ),
+                hint: Text(
+                  _lecturerOptions.isEmpty
+                      ? 'No lecturer found'
+                      : 'Select lecturer',
+                  style: const TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                items: _lecturerOptions
+                    .map((l) => DropdownMenuItem(
+                          value: l.id,
+                          child: Text(
+                            l.label,
+                            style: const TextStyle(fontSize: 11),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                    .toList(),
+                validator: (v) => v == null ? 'Required' : null,
+                onChanged: _lecturerOptions.isEmpty
+                    ? null
+                    : (val) => setState(() => _selectedLecturerId = val),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         Row(
@@ -604,16 +651,19 @@ class _ClassEntry {
 }
 
 class _LecturerOption {
+  final int id;        // ← TAMBAH
   final String staffId;
   final String name;
 
   const _LecturerOption({
+    required this.id,  // ← TAMBAH
     required this.staffId,
     required this.name,
   });
 
   factory _LecturerOption.fromJson(Map<String, dynamic> json) {
     return _LecturerOption(
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0, // ← TAMBAH
       staffId: json['staff_id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
     );

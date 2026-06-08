@@ -506,29 +506,36 @@ class AttendanceController extends Controller
      */
     public function getLecturerClasses($lecturerId)
     {
+        // Resolve lecturers.id from user_id
+        $lecturer = DB::table('lecturers')
+            ->where('user_id', $lecturerId)
+            ->first();
+
+        $lecturerRecordId = $lecturer?->id ?? $lecturerId;
+
         $courseClasses = ClassSession::with('subject')
-            ->where('lecturer_id', $lecturerId)
+            ->where('lecturer_id', $lecturerId)  // class_sessions pakai users.id
             ->orderBy('class_date')
             ->orderBy('start_time')
             ->get()
             ->map(function ($class) {
                 return [
-                    'id' => $class->id,
-                    'subject_id' => $class->subject_id,
-                    'subject_code' => $class->subject->code ?? '',
-                    'subject_name' => $class->subject->name ?? '',
-                    'class_date' => $class->class_date,
-                    'start_time' => $class->start_time,
-                    'end_time' => $class->end_time,
-                    'session_type' => $class->session_type ?? '',
-                    'week_number' => $class->week_number ?? '',
+                    'id'             => $class->id,
+                    'subject_id'     => $class->subject_id,
+                    'subject_code'   => $class->subject->code ?? '',
+                    'subject_name'   => $class->subject->name ?? '',
+                    'class_date'     => $class->class_date,
+                    'start_time'     => $class->start_time,
+                    'end_time'       => $class->end_time,
+                    'session_type'   => $class->session_type ?? '',
+                    'week_number'    => $class->week_number ?? '',
                     'attendance_type' => 'course',
                 ];
             });
 
         $moduleClasses = DB::table('module_schedules')
             ->join('modules', 'module_schedules.module_id', '=', 'modules.id')
-            ->where('module_schedules.lecturer_id', $lecturerId)
+            ->where('module_schedules.lecturer_id', $lecturerRecordId)  // module_schedules pakai lecturers.id
             ->orderBy('module_schedules.class_date')
             ->orderBy('module_schedules.start_time')
             ->select(
@@ -545,15 +552,15 @@ class AttendanceController extends Controller
             ->get()
             ->map(function ($class) {
                 return [
-                    'id' => $class->id,
-                    'module_id' => $class->module_id,
-                    'module_code' => $class->module_code,
-                    'module_name' => $class->module_name,
-                    'class_date' => $class->class_date,
-                    'start_time' => $class->start_time,
-                    'end_time' => $class->end_time,
-                    'session_type' => $class->session_type ?? '',
-                    'week_number' => $class->week_number ?? '',
+                    'id'             => $class->id,
+                    'module_id'      => $class->module_id,
+                    'module_code'    => $class->module_code,
+                    'module_name'    => $class->module_name,
+                    'class_date'     => $class->class_date,
+                    'start_time'     => $class->start_time,
+                    'end_time'       => $class->end_time,
+                    'session_type'   => $class->session_type ?? '',
+                    'week_number'    => $class->week_number ?? '',
                     'attendance_type' => 'module',
                 ];
             });
@@ -674,9 +681,9 @@ class AttendanceController extends Controller
             ->where('students.id', $studentId);
 
         $selects = [
-                'users.name',
-                'students.matric_no as matric',
-                'students.programme as program',
+            'users.name',
+            'students.matric_no as matric',
+            'students.programme as program',
         ];
 
         if (Schema::hasColumn('students', 'advisor')) {

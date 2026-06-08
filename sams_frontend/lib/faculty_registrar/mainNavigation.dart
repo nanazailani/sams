@@ -64,7 +64,10 @@ class _MainNavigationState extends State<MainNavigation> {
         onReportTap: _openReportPage,
       ),
       _showAddCoursesPage
-          ? AddCoursesPage(onCourseSaved: _closeAddCoursesPage)
+          ? AddCoursesPage(
+              onBack: _closeAddCoursesPage,
+              onCourseSaved: _closeAddCoursesPage,
+            )
           : ManageCoursesPage(onAddCoursesTap: _openAddCoursesPage),
       const ApproveSubjectPage(),
       const ReportPage(),
@@ -210,19 +213,19 @@ class FacultyRegistrarPage extends StatelessWidget {
                         // ✅ Manage Courses → navigates to ManageCoursesPage
                         RegistrarModuleCard(
                           title: 'Manage Courses',
-                          imagePath: 'images/manage_courses.png',
+                          imagePath: 'assets/images/manage_courses.png',
                           fallbackIcon: Icons.menu_book_outlined,
                           onTap: onManageCoursesTap,
                         ),
                         RegistrarModuleCard(
                           title: 'Approve Subject',
-                          imagePath: 'images/approve.png',
+                          imagePath: 'assets/images/approve.png',
                           fallbackIcon: Icons.check_circle_outline,
                           onTap: onApprovalTap,
                         ),
                         RegistrarModuleCard(
                           title: 'Generate Report',
-                          imagePath: 'images/report.png',
+                          imagePath: 'assets/images/report.png',
                           fallbackIcon: Icons.bar_chart_outlined,
                           onTap: onReportTap,
                         ),

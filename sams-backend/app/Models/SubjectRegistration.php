@@ -10,7 +10,13 @@ class SubjectRegistration extends Model
 
     protected $fillable = [
         'student_id',
-        'subject_id'
+        'subject_id',
+        'staff_id',
+        'section',
+        'tutorial_lab',
+        'approval_status',
+        'rejection_reason',
+        'registrar_id',
     ];
 
     public function student()

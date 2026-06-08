@@ -10,8 +10,16 @@ class Subject extends Model
         'code',
         'name',
         'credit_hour',
+        'lecturer_id',   // ← tambah ni kalau takde
         'examination',
         'exam_date',
         'exam_period',
+        'exam_time',
+        'registrar_id',
     ];
+
+    public function lecturer()
+    {
+        return $this->belongsTo(Lecturer::class);
+    }
 }
