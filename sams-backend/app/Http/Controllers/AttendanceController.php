@@ -63,6 +63,7 @@ class AttendanceController extends Controller
             $sessionIdField => $sessionId,
             'code' => $code,
             'expires_at' => $classEnd,
+            'generated_at' => $now, // ← save when lecturer generated the code
         ]);
 
         return response()->json([
@@ -71,6 +72,7 @@ class AttendanceController extends Controller
             'attendance_code' => $attendanceCode->code,
             $sessionIdField => $attendanceCode->{$sessionIdField},
             'expires_at' => $attendanceCode->expires_at,
+            'generated_at' => $attendanceCode->generated_at,
         ]);
     }
 
@@ -324,8 +326,10 @@ class AttendanceController extends Controller
         }
 
         $now = Carbon::now();
-        $classStart = Carbon::parse($session->class_date . ' ' . $session->start_time);
-        $lateThreshold = (clone $classStart)->addMinutes(15);
+
+        // Late threshold based on when lecturer generated the code, not class start time
+        $codeGeneratedAt = Carbon::parse($attendanceCode->generated_at);
+        $lateThreshold = (clone $codeGeneratedAt)->addMinutes(15);
 
         $status = $now->gt($lateThreshold) ? 'Late' : 'Present';
 
@@ -509,12 +513,10 @@ class AttendanceController extends Controller
         $lecturer = DB::table('lecturers')->where('id', $lecturerId)->first();
         $userIdForSessions = $lecturer?->user_id ?? $lecturerId;
 
-        // Ambil subjects yang lecturer ni assigned to
         $subjects = DB::table('subjects')
-            ->where('lecturer_id', $lecturerId)  // subjects.lecturer_id = lecturers.id
+            ->where('lecturer_id', $lecturerId)
             ->get()
             ->map(function ($subject) use ($userIdForSessions) {
-                // Ambil sessions untuk subject ni
                 $sessions = DB::table('class_sessions')
                     ->where('subject_id', $subject->id)
                     ->where('lecturer_id', $userIdForSessions)
@@ -536,7 +538,6 @@ class AttendanceController extends Controller
                         ];
                     });
 
-                // Kalau takde session pun, still return subject dengan placeholder
                 if ($sessions->isEmpty()) {
                     return [[
                         'id'              => null,
@@ -556,7 +557,6 @@ class AttendanceController extends Controller
             })
             ->flatten(1);
 
-        // Modules — sama macam sebelum
         $moduleClasses = DB::table('module_schedules')
             ->join('modules', 'module_schedules.module_id', '=', 'modules.id')
             ->where('module_schedules.lecturer_id', $lecturerId)
@@ -724,6 +724,7 @@ class AttendanceController extends Controller
 
         return response()->json($student);
     }
+
     private function resolveStudentId($incomingStudentId): ?int
     {
         if (!$incomingStudentId) {

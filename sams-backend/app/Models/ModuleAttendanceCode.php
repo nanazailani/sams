@@ -11,6 +11,7 @@ class ModuleAttendanceCode extends Model
         'module_session_id',
         'code',
         'expires_at',
+        'generated_at',
     ];
 
     protected $casts = [

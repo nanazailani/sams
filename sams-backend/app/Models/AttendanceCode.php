@@ -11,5 +11,6 @@ class AttendanceCode extends Model
         'class_session_id',
         'code',
         'expires_at',
+        'generated_at',
     ];
 }

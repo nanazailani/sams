@@ -25,7 +25,7 @@ class ModuleController extends Controller
         $modules = Module::with(['lecturer.user', 'registrations.schedule', 'schedules'])
             ->orderBy('code')
             ->get()
-            ->unique(fn ($module) => strtoupper(trim((string) $module->code)))
+            ->unique(fn($module) => strtoupper(trim((string) $module->code)))
             ->values();
 
         $data = $modules->map(function ($module) use ($studentId, $scope, $now) {
@@ -43,10 +43,11 @@ class ModuleController extends Controller
                         && $schedule->status === 'available'
                         && (int) $schedule->booked_count < (int) $schedule->capacity;
                 })
-                ->sortBy(fn ($schedule) => $schedule->class_date . ' ' . $schedule->start_time)
+                ->sortBy(fn($schedule) => $schedule->class_date . ' ' . $schedule->start_time)
                 ->values();
+
             $firstSchedule = $scope === 'all'
-                ? $module->schedules->sortBy(fn ($schedule) => $schedule->class_date . ' ' . $schedule->start_time)->first()
+                ? $module->schedules->sortBy(fn($schedule) => $schedule->class_date . ' ' . $schedule->start_time)->first()
                 : $bookableSchedules->first();
 
             if (
@@ -159,7 +160,7 @@ class ModuleController extends Controller
             });
         }
 
-        $data = $schedules->sortBy(fn ($schedule) => $schedule->class_date . ' ' . $schedule->start_time)->map(function ($schedule) use ($module) {
+        $data = $schedules->sortBy(fn($schedule) => $schedule->class_date . ' ' . $schedule->start_time)->map(function ($schedule) use ($module) {
             $lecturerName = $schedule->lecturer?->user?->name
                 ?? $module->lecturer?->user?->name
                 ?? 'N/A';
@@ -583,6 +584,7 @@ class ModuleController extends Controller
             'message' => 'Class deleted successfully.',
         ]);
     }
+
     public function myBookings(Request $request): JsonResponse
     {
         $studentId = $this->resolveStudentId($request->query('student_id'));
@@ -608,7 +610,6 @@ class ModuleController extends Controller
                 $scheduleDate = Carbon::parse($registration->schedule->class_date);
                 $today = Carbon::today();
 
-                // boleh cancel sebelum hari event sahaja
                 $canCancel = $today->lt($scheduleDate);
             }
 
@@ -743,73 +744,84 @@ class ModuleController extends Controller
     }
 
     public function creditClaims(Request $request): JsonResponse
-{
-    $studentId = $this->resolveStudentId($request->query('student_id'));
+    {
+        $studentId = $this->resolveStudentId($request->query('student_id'));
 
-    if (!$studentId) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Student ID is required.',
-        ], 400);
-    }
-
-    $registrations = ModuleRegistration::with(['module', 'schedule'])
-        ->where('student_id', $studentId)
-        ->orderByDesc('id')
-        ->get();
-
-    $data = $registrations->map(function ($registration) {
-        $attendance = ModuleAttendance::where('student_id', $registration->student_id)
-            ->where('module_session_id', $registration->module_schedule_id)
-            ->latest()
-            ->first();
-
-        $attendanceStatus = strtoupper($attendance->status ?? '--');
-        $attended = in_array($attendanceStatus, ['PRESENT', 'LATE'], true);
-        $classEnded = $registration->schedule
-            && $registration->schedule->class_date
-            && $registration->schedule->end_time
-            && Carbon::parse($registration->schedule->class_date . ' ' . $registration->schedule->end_time)->lte(now());
-        $progress = $attended && $classEnded;
-
-        $claim = DB::table('credit_claims')
-            ->where('registration_id', $registration->id)
-            ->latest('id')
-            ->first();
-
-        $claimStatus = $claim->status ?? '--';
-
-        if (!$attended && !$claim) {
-            return null;
+        if (!$studentId) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Student ID is required.',
+            ], 400);
         }
 
-        return [
-            'registration_id' => $registration->id,
-            'module_id' => $registration->module_id,
-            'code' => $registration->module->code ?? '',
-            'name' => $registration->module->name ?? '',
-            'attendance_status' => $attendanceStatus,
-            'progress_completed' => $progress,
-            'claim_status' => strtoupper($claimStatus),
-            'class_ended' => $classEnded,
-            'can_claim' => $progress && !$claim,
-        ];
-    })->filter()
-        ->sortByDesc(function ($item) {
-            if ($item['can_claim'] === true) {
-                return 2;
+        $registrations = ModuleRegistration::with(['module', 'schedule'])
+            ->where('student_id', $studentId)
+            ->orderByDesc('id')
+            ->get();
+
+        // Group by module_id, pick the registration that has attendance first
+        $grouped = $registrations->groupBy('module_id')->map(function ($regs) {
+            $withAttendance = $regs->first(function ($registration) {
+                return ModuleAttendance::where('student_id', $registration->student_id)
+                    ->where('module_session_id', $registration->module_schedule_id)
+                    ->exists();
+            });
+
+            return $withAttendance ?? $regs->first();
+        });
+
+        $data = $grouped->map(function ($registration) {
+            $attendance = ModuleAttendance::where('student_id', $registration->student_id)
+                ->where('module_session_id', $registration->module_schedule_id)
+                ->latest()
+                ->first();
+
+            $attendanceStatus = strtoupper($attendance->status ?? '--');
+            $attended = in_array($attendanceStatus, ['PRESENT', 'LATE'], true);
+
+            $classEnded = $registration->schedule
+                && $registration->schedule->class_date
+                && $registration->schedule->end_time
+                && Carbon::parse($registration->schedule->class_date . ' ' . $registration->schedule->end_time)->lte(now());
+
+            $progress = $attended && $classEnded;
+
+            $claim = DB::table('credit_claims')
+                ->where('registration_id', $registration->id)
+                ->latest('id')
+                ->first();
+
+            $claimStatus = $claim->status ?? '--';
+
+            if (!$attended && !$claim) {
+                return null;
             }
 
-            return $item['claim_status'] !== '--' ? 1 : 0;
-        })
-        ->unique('module_id')
-        ->values();
+            return [
+                'registration_id' => $registration->id,
+                'module_id' => $registration->module_id,
+                'code' => $registration->module->code ?? '',
+                'name' => $registration->module->name ?? '',
+                'attendance_status' => $attendanceStatus,
+                'progress_completed' => $progress,
+                'claim_status' => strtoupper($claimStatus),
+                'class_ended' => $classEnded,
+                'can_claim' => $progress && !$claim,
+            ];
+        })->filter()
+            ->sortByDesc(function ($item) {
+                if ($item['can_claim'] === true) {
+                    return 2;
+                }
+                return $item['claim_status'] !== '--' ? 1 : 0;
+            })
+            ->values();
 
-    return response()->json([
-        'status' => true,
-        'data' => $data,
-    ]);
-}
+        return response()->json([
+            'status' => true,
+            'data' => $data,
+        ]);
+    }
 
     public function applyCreditClaim(Request $request): JsonResponse
     {
@@ -982,7 +994,7 @@ class ModuleController extends Controller
                 'pending' => $data->where('status', 'IN PROGRESS')->count(),
                 'approved_today' => $data
                     ->where('status', 'APPROVED')
-                    ->filter(fn ($item) => !empty($item['reviewed_at']) && Carbon::parse($item['reviewed_at'])->isToday())
+                    ->filter(fn($item) => !empty($item['reviewed_at']) && Carbon::parse($item['reviewed_at'])->isToday())
                     ->count(),
                 'urgent' => $data->where('priority', 'URGENT')->count(),
             ],
@@ -1121,7 +1133,7 @@ class ModuleController extends Controller
                     'end_time' => $first['end_time'],
                     'total_registered' => $records->count(),
                     'present' => $records->where('attendance_status', 'PRESENT')->count(),
-                    'claimed' => $records->filter(fn ($item) => $item['claim_status'] !== 'NOT CLAIMED')->count(),
+                    'claimed' => $records->filter(fn($item) => $item['claim_status'] !== 'NOT CLAIMED')->count(),
                     'approved' => $records->where('claim_status', 'APPROVED')->count(),
                     'records' => $records->values(),
                 ];
@@ -1133,7 +1145,7 @@ class ModuleController extends Controller
             'summary' => [
                 'total_registered' => $data->count(),
                 'present' => $data->where('attendance_status', 'PRESENT')->count(),
-                'claims_submitted' => $data->filter(fn ($item) => $item['claim_status'] !== 'NOT CLAIMED')->count(),
+                'claims_submitted' => $data->filter(fn($item) => $item['claim_status'] !== 'NOT CLAIMED')->count(),
                 'approved_claims' => $data->where('claim_status', 'APPROVED')->count(),
             ],
             'data' => $modules,
@@ -1173,7 +1185,6 @@ class ModuleController extends Controller
             'message' => 'Student removed from module successfully.',
         ]);
     }
-
 
     private function resolveStudentId($incomingStudentId): ?int
     {
