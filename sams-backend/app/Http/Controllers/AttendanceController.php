@@ -63,7 +63,7 @@ class AttendanceController extends Controller
             $sessionIdField => $sessionId,
             'code' => $code,
             'expires_at' => $classEnd,
-            'generated_at' => $now, // ← save when lecturer generated the code
+            'generated_at' => $now,
         ]);
 
         return response()->json([
@@ -130,6 +130,7 @@ class AttendanceController extends Controller
                 'message' => 'Student record not found',
             ], 404);
         }
+
         $attendanceType = $request->query('type', 'course');
         $isModule = $attendanceType === 'module';
         $sessionTable = $isModule ? 'module_schedules' : 'class_sessions';
@@ -148,9 +149,18 @@ class AttendanceController extends Controller
             )
             ->first();
 
-        $sessions = DB::table($sessionTable)
-            ->where($sessionColumn, $subjectId)
-            ->pluck('id');
+        // For module: only count the schedule(s) student registered for
+        // For course: count all sessions under that subject
+        if ($isModule) {
+            $sessions = DB::table('module_registrations')
+                ->where('student_id', $studentId)
+                ->where('module_id', $subjectId)
+                ->pluck('module_schedule_id');
+        } else {
+            $sessions = DB::table($sessionTable)
+                ->where($sessionColumn, $subjectId)
+                ->pluck('id');
+        }
 
         $records = DB::table($attendanceTable)
             ->where('student_id', $studentId)
@@ -327,7 +337,7 @@ class AttendanceController extends Controller
 
         $now = Carbon::now();
 
-        // Late threshold based on when lecturer generated the code, not class start time
+        // Late threshold based on when lecturer generated the code
         $codeGeneratedAt = Carbon::parse($attendanceCode->generated_at);
         $lateThreshold = (clone $codeGeneratedAt)->addMinutes(15);
 
