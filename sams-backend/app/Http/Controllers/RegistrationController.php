@@ -20,8 +20,12 @@ class RegistrationController extends Controller
             $registrations = DB::table('subject_registrations')
                 ->where('student_id', $studentId)
                 ->get();
+            $hasApprovalStatus = Schema::hasColumn('subject_registrations', 'approval_status');
 
             $registeredSubjectIds = $registrations
+                ->filter(function ($row) use ($hasApprovalStatus) {
+                    return !$hasApprovalStatus || ($row->approval_status ?? 'Pending') !== 'Rejected';
+                })
                 ->pluck('subject_id')
                 ->map(fn($id) => (int) $id)
                 ->all();
@@ -237,6 +241,10 @@ class RegistrationController extends Controller
                 'tutorial_lab'    => $validated['tutorial_lab'] ?? null,
                 default           => null,
             };
+        }
+
+        if (Schema::hasColumn('subject_registrations', 'rejection_reason')) {
+            $data['rejection_reason'] = null;
         }
 
         DB::table('subject_registrations')->updateOrInsert(
@@ -544,7 +552,7 @@ class RegistrationController extends Controller
             $query->where(function ($statusQuery) {
                 $statusQuery
                     ->whereNull('subject_registrations.approval_status')
-                    ->orWhere('subject_registrations.approval_status', '!=', 'Approved');
+                    ->orWhere('subject_registrations.approval_status', 'Pending');
             });
         }
 

@@ -222,18 +222,19 @@ class _StudentHomepageState extends State<StudentHomepage> {
 
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           title: const Text('Subject Registration Rejected'),
-          content: Text(
-            'Reason: ${rejectedSubjects.first['rejection_reason']?.toString() ?? ''}',
-            style: const TextStyle(fontSize: 13, height: 1.35),
-          ),
+          content: _buildRejectionNoticeContent(rejectedSubjects),
           actions: [
             ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _acknowledgeRejectedSubjects(rejectedSubjects);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primaryColor,
                 foregroundColor: Colors.white,
@@ -245,6 +246,124 @@ class _StudentHomepageState extends State<StudentHomepage> {
         ),
       );
     });
+  }
+
+  Widget _buildRejectionNoticeContent(
+    List<Map<String, dynamic>> rejectedSubjects,
+  ) {
+    if (rejectedSubjects.length == 1) {
+      final subject = rejectedSubjects.first;
+      final reason = subject['rejection_reason']?.toString() ?? '';
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _rejectionSubjectLabel(subject),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Reason: $reason',
+            style: const TextStyle(fontSize: 13, height: 1.35),
+          ),
+        ],
+      );
+    }
+
+    return SizedBox(
+      width: double.maxFinite,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rejectedSubjects.map((subject) {
+            final reason = subject['rejection_reason']?.toString() ?? '';
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _rejectionSubjectLabel(subject),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Reason: $reason',
+                    style: const TextStyle(fontSize: 13, height: 1.35),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  String _rejectionSubjectLabel(Map<String, dynamic> subject) {
+    final code = subject['code']?.toString().trim() ?? '';
+    final name = subject['name']?.toString().trim().toUpperCase() ?? '';
+
+    if (code.isEmpty && name.isEmpty) return 'Subject';
+    if (code.isEmpty) return name;
+    if (name.isEmpty) return code;
+    return '$code - $name';
+  }
+
+  Future<void> _acknowledgeRejectedSubjects(
+    List<Map<String, dynamic>> rejectedSubjects,
+  ) async {
+    if (_studentId == 0 || rejectedSubjects.isEmpty) return;
+
+    var hasError = false;
+
+    for (final subject in rejectedSubjects) {
+      final subjectId = subject['id'];
+      if (subjectId == null) {
+        hasError = true;
+        continue;
+      }
+
+      try {
+        final response = await http
+            .delete(
+              Uri.parse(
+                '$_apiBaseUrl/students/$_studentId/registered-subjects/$subjectId',
+              ),
+            )
+            .timeout(const Duration(seconds: 10));
+
+        if (response.statusCode != 200) {
+          hasError = true;
+        }
+      } catch (e) {
+        hasError = true;
+      }
+    }
+
+    if (!mounted) return;
+
+    await _fetchSubjects();
+    await _fetchRegisteredSubjects();
+
+    if (hasError && mounted) {
+      _showSnack(
+        'Some rejected subjects could not be reset. Please refresh and try again.',
+        isError: true,
+      );
+    }
   }
 
   void _filterSubjects() {

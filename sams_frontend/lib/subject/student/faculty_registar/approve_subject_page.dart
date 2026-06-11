@@ -45,8 +45,10 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     super.dispose();
   }
 
-  Future<void> _loadRequests() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadRequests({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() => _isLoading = true);
+    }
     try {
       final uri = Uri.parse('$_apiBaseUrl/subject-approvals');
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
@@ -83,7 +85,7 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
       if (!mounted) return;
       _showSnack('Error: $e', isError: true);
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && showLoading) setState(() => _isLoading = false);
     }
   }
 
@@ -99,16 +101,27 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     }).toList();
   }
 
-  // Approve or reject ALL subjects of a student at once
-  Future<void> _updateStudentStatus(
-    Map<String, dynamic> student,
-    String status, {
-    String? rejectionReason,
-  }) async {
-    final studentId = student['student_id'];
+  Future<_SubjectActionResult> _updateSubjectStatus(
+    Map<String, dynamic> subject,
+    String status,
+  ) async {
+    final registrationId = subject['registration_id'];
+    if (registrationId == null) {
+      _showSnack('Registration ID is missing for this subject', isError: true);
+      return const _SubjectActionResult(success: false);
+    }
+
+    String? rejectionReason;
+    if (status == 'Rejected') {
+      rejectionReason = await _askRejectionReason();
+      if (rejectionReason == null) {
+        return const _SubjectActionResult(success: false);
+      }
+    }
+
     try {
       final response = await http.post(
-        Uri.parse('$_apiBaseUrl/subject-approvals/student/$studentId/status'),
+        Uri.parse('$_apiBaseUrl/subject-approvals/registrations/$registrationId/status'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({
           'status': status,
@@ -116,30 +129,28 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
         }),
       ).timeout(const Duration(seconds: 10));
 
-      if (!mounted) return;
+      if (!mounted) return const _SubjectActionResult(success: false);
 
       if (response.statusCode == 200) {
-        _showSnack('All subjects ${status.toLowerCase()} successfully');
-        await _loadRequests();
-      } else {
-        final data = jsonDecode(response.body);
-        _showSnack(data['message'] ?? 'Failed to update', isError: true);
+        final code = subject['code']?.toString() ?? 'Subject';
+        _showSnack('$code ${status.toLowerCase()} successfully');
+        await _loadRequests(showLoading: false);
+        return _SubjectActionResult(
+          success: true,
+          rejectionReason: rejectionReason,
+        );
       }
+
+      _showSnack(
+        _responseMessage(response, 'Failed to update subject'),
+        isError: true,
+      );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return const _SubjectActionResult(success: false);
       _showSnack('Error: $e', isError: true);
     }
-  }
 
-  Future<void> _rejectStudent(Map<String, dynamic> student) async {
-    final reason = await _askRejectionReason();
-    if (reason == null) return;
-
-    await _updateStudentStatus(
-      student,
-      'Rejected',
-      rejectionReason: reason,
-    );
+    return const _SubjectActionResult(success: false);
   }
 
   Future<String?> _askRejectionReason() async {
@@ -205,31 +216,37 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     return reason;
   }
 
-  Future<void> _openStudentSubjectsDialog(Map<String, dynamic> student) async {
-    // Fetch subjects for this student
-    List<Map<String, dynamic>> subjects = [];
-    bool loadError = false;
-
+  Future<List<Map<String, dynamic>>?> _fetchStudentApprovalSubjects(
+    Object? studentId,
+  ) async {
     try {
       final response = await http
-          .get(Uri.parse('$_apiBaseUrl/subject-approvals/${student['student_id']}/subjects'))
+          .get(Uri.parse('$_apiBaseUrl/subject-approvals/$studentId/subjects'))
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List raw = data['subjects'] ?? [];
-        subjects = raw.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
-      } else {
-        loadError = true;
+        return raw.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      if (mounted) {
+        _showSnack(
+          _responseMessage(response, 'Failed to load subjects'),
+          isError: true,
+        );
       }
     } catch (_) {
-      loadError = true;
+      if (mounted) _showSnack('Failed to load subjects', isError: true);
     }
 
-    if (!mounted) return;
+    return null;
+  }
 
-    if (loadError) {
-      _showSnack('Failed to load subjects', isError: true);
+  Future<void> _openStudentSubjectsDialog(Map<String, dynamic> student) async {
+    final subjects = await _fetchStudentApprovalSubjects(student['student_id']);
+
+    if (!mounted || subjects == null) {
       return;
     }
 
@@ -240,16 +257,20 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
       builder: (ctx) => _StudentSubjectsDialog(
         student: student,
         subjects: subjects,
-        onApproveAll: () async {
-          Navigator.pop(ctx);
-          await _updateStudentStatus(student, 'Approved');
-        },
-        onRejectAll: () async {
-          Navigator.pop(ctx);
-          await _rejectStudent(student);
-        },
+        onUpdateSubject: _updateSubjectStatus,
       ),
     );
+  }
+
+  String _responseMessage(http.Response response, String fallback) {
+    try {
+      final data = jsonDecode(response.body);
+      if (data is Map && data['message'] != null) {
+        return data['message'].toString();
+      }
+    } catch (_) {}
+
+    return fallback;
   }
 
   void _showSnack(String message, {bool isError = false}) {
@@ -367,8 +388,6 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
                                 child: _StudentApprovalCard(
                                   student: student,
                                   onViewSubjects: () => _openStudentSubjectsDialog(student),
-                                  onApprove: () => _updateStudentStatus(student, 'Approved'),
-                                  onReject: () => _rejectStudent(student),
                                 ),
                               ),
                             ),
@@ -415,14 +434,10 @@ class _CountTile extends StatelessWidget {
 class _StudentApprovalCard extends StatelessWidget {
   final Map<String, dynamic> student;
   final VoidCallback onViewSubjects;
-  final VoidCallback onApprove;
-  final VoidCallback onReject;
 
   const _StudentApprovalCard({
     required this.student,
     required this.onViewSubjects,
-    required this.onApprove,
-    required this.onReject,
   });
 
   @override
@@ -433,7 +448,6 @@ class _StudentApprovalCard extends StatelessWidget {
     final advisor = student['advisor']?.toString() ?? '-';
     final programme = student['programme']?.toString() ?? '-';
     final status = student['status']?.toString() ?? 'Pending';
-    final isPending = status == 'Pending';
 
     return Container(
       width: double.infinity,
@@ -498,39 +512,6 @@ class _StudentApprovalCard extends StatelessWidget {
             ],
           ),
 
-          // Show Approve/Reject buttons only if still Pending
-          if (isPending) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: onReject,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Reject All'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: onApprove,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2FC4C9),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Approve All'),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -564,25 +545,82 @@ class _StatusPill extends StatelessWidget {
 
 // ─── SUBJECTS DIALOG (page popup, not bottom sheet) ──────────────────────────
 
-class _StudentSubjectsDialog extends StatelessWidget {
+class _SubjectActionResult {
+  final bool success;
+  final String? rejectionReason;
+
+  const _SubjectActionResult({
+    required this.success,
+    this.rejectionReason,
+  });
+}
+
+class _StudentSubjectsDialog extends StatefulWidget {
   final Map<String, dynamic> student;
   final List<Map<String, dynamic>> subjects;
-  final VoidCallback onApproveAll;
-  final VoidCallback onRejectAll;
+  final Future<_SubjectActionResult> Function(
+    Map<String, dynamic> subject,
+    String status,
+  ) onUpdateSubject;
 
   const _StudentSubjectsDialog({
     required this.student,
     required this.subjects,
-    required this.onApproveAll,
-    required this.onRejectAll,
+    required this.onUpdateSubject,
   });
 
   @override
+  State<_StudentSubjectsDialog> createState() => _StudentSubjectsDialogState();
+}
+
+class _StudentSubjectsDialogState extends State<_StudentSubjectsDialog> {
+  late final List<Map<String, dynamic>> _subjects;
+  int? _updatingRegistrationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _subjects = widget.subjects
+        .map<Map<String, dynamic>>((subject) => Map<String, dynamic>.from(subject))
+        .toList();
+  }
+
+  int? _registrationId(Map<String, dynamic> subject) {
+    final value = subject['registration_id'];
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  String _subjectStatus(Map<String, dynamic> subject) {
+    return (subject['approval_status'] ?? subject['status'] ?? 'Pending').toString();
+  }
+
+  Future<void> _handleSubjectStatus(
+    Map<String, dynamic> subject,
+    String status,
+  ) async {
+    final registrationId = _registrationId(subject);
+    if (registrationId == null) return;
+
+    setState(() => _updatingRegistrationId = registrationId);
+    final result = await widget.onUpdateSubject(subject, status);
+
+    if (!mounted) return;
+
+    if (result.success) {
+      subject['approval_status'] = status;
+      subject['status'] = status;
+      subject['rejection_reason'] =
+          status == 'Rejected' ? result.rejectionReason : null;
+    }
+
+    setState(() => _updatingRegistrationId = null);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final name = student['name']?.toString() ?? '-';
-    final matricNo = student['matric_no']?.toString() ?? '-';
-    final status = student['status']?.toString() ?? 'Pending';
-    final isPending = status == 'Pending';
+    final name = widget.student['name']?.toString() ?? '-';
+    final matricNo = widget.student['matric_no']?.toString() ?? '-';
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
@@ -608,10 +646,14 @@ class _StudentSubjectsDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                      Text('ID: $matricNo',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      Text(
+                        name,
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        'ID: $matricNo',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
                     ],
                   ),
                 ),
@@ -626,25 +668,34 @@ class _StudentSubjectsDialog extends StatelessWidget {
           // Subject list
           ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxHeight: MediaQuery.of(context).size.height * 0.62,
             ),
-            child: subjects.isEmpty
+            child: _subjects.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(24),
                     child: Text('No registered subjects.', style: TextStyle(color: Colors.black54)),
                   )
                 : ListView.builder(
                     shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    itemCount: subjects.length,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    itemCount: _subjects.length,
                     itemBuilder: (context, i) {
-                      final s = subjects[i];
+                      final s = _subjects[i];
                       final code = s['code']?.toString() ?? '-';
                       final subName = s['name']?.toString() ?? '-';
                       final credit = s['credit_hour']?.toString() ?? '0';
                       final section = s['section']?.toString() ?? '-';
                       final tutorial = s['tutorial_lab']?.toString() ?? '-';
                       final time = s['time_summary']?.toString() ?? '-';
+                      final status = _subjectStatus(s);
+                      final isPending = status == 'Pending';
+                      final registrationId = _registrationId(s);
+                      final isUpdating =
+                          registrationId != null && _updatingRegistrationId == registrationId;
+                      final canUpdate = isPending &&
+                          registrationId != null &&
+                          _updatingRegistrationId == null;
+                      final reason = s['rejection_reason']?.toString().trim() ?? '';
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
@@ -656,59 +707,92 @@ class _StudentSubjectsDialog extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('$code - ${subName.toUpperCase()}',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$code - ${subName.toUpperCase()}',
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _StatusPill(status),
+                              ],
+                            ),
                             const SizedBox(height: 6),
                             Text('Credit Hours: $credit', style: const TextStyle(fontSize: 12)),
                             Text('Section: $section', style: const TextStyle(fontSize: 12)),
                             Text('Tutorial/Lab: $tutorial', style: const TextStyle(fontSize: 12)),
                             Text('Time: $time', style: const TextStyle(fontSize: 12)),
+                            if (status == 'Rejected' && reason.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                'Reason: $reason',
+                                style: const TextStyle(fontSize: 12, color: Colors.red),
+                              ),
+                            ],
+                            if (isPending) ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 34,
+                                      child: ElevatedButton(
+                                        onPressed: canUpdate
+                                            ? () => _handleSubjectStatus(s, 'Rejected')
+                                            : null,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: Colors.red.withOpacity(0.35),
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                                        ),
+                                        child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 34,
+                                      child: ElevatedButton(
+                                        onPressed: canUpdate
+                                            ? () => _handleSubjectStatus(s, 'Approved')
+                                            : null,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF2FC4C9),
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: const Color(0xFF2FC4C9).withOpacity(0.35),
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                                        ),
+                                        child: isUpdating
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Text('Approve', style: TextStyle(fontSize: 12)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       );
                     },
                   ),
           ),
-
-          // Approve All / Reject All buttons
-          if (isPending)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: onRejectAll,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Text('Reject All'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: onApproveAll,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2FC4C9),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Text('Approve All'),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: _StatusPill(status),
-            ),
         ],
       ),
     );
