@@ -1,6 +1,3 @@
-
-
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -49,7 +46,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
           .get(
             Uri.parse(
               //'http://127.0.0.1:8000/api/attendance/${widget.classSessionId}/submissions',
-              'https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/${widget.classSessionId}/submissions',
+              'https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}',
             ),
           )
           .timeout(const Duration(seconds: 10));
@@ -89,7 +86,10 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
         //Uri.parse('http://127.0.0.1:8000/api/attendance/$attendanceId/status'),
         Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/$attendanceId/status'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'status': status}),
+        body: json.encode({
+          'status': status,
+          'attendance_type': widget.attendanceType,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -101,15 +101,33 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
           }
         });
 
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Attendance $status successfully.'),
+              backgroundColor: status == 'Approved' ? Colors.green : Colors.red,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update attendance status.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Attendance $status successfully.'),
-            backgroundColor: status == 'Approved' ? Colors.green : Colors.red,
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-    } catch (e) {
-      //
     }
   }
 
@@ -121,6 +139,8 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
         return const Color(0xFFE0A92F);
       case 'Absent':
         return const Color(0xFFF06A6A);
+      case 'Pending':
+        return const Color(0xFF6F7A8C);
       default:
         return Colors.black54;
     }
@@ -134,6 +154,8 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
         return const Color(0xFFFFF3D8);
       case 'Absent':
         return const Color(0xFFFFE6E6);
+      case 'Pending':
+        return const Color(0xFFF3F3F3);
       default:
         return const Color(0xFFF3F3F3);
     }
@@ -373,7 +395,9 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                 final verificationStatus = item['verification_status'] ?? 'Pending';
                                 final status = verificationStatus == 'Rejected'
                                     ? 'Absent'
-                                    : originalStatus;
+                                    : (verificationStatus == 'Pending'
+                                        ? 'Pending'
+                                        : originalStatus);
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                   decoration: BoxDecoration(

@@ -168,11 +168,11 @@ class AttendanceController extends Controller
             ->get();
 
         $present = $records
-            ->filter(fn($record) => $record->status === 'Present' && ($record->verification_status ?? 'Pending') !== 'Rejected')
+            ->filter(fn($record) => $record->status === 'Present' && ($record->verification_status ?? 'Pending') === 'Approved')
             ->count();
 
         $late = $records
-            ->filter(fn($record) => $record->status === 'Late' && ($record->verification_status ?? 'Pending') !== 'Rejected')
+            ->filter(fn($record) => $record->status === 'Late' && ($record->verification_status ?? 'Pending') === 'Approved')
             ->count();
 
         $absent = $records
@@ -204,9 +204,15 @@ class AttendanceController extends Controller
             ->limit(10)
             ->get()
             ->map(function ($item) {
-                $displayStatus = ($item->verification_status ?? 'Pending') === 'Rejected'
-                    ? 'Absent'
-                    : $item->status;
+                $verificationStatus = $item->verification_status ?? 'Pending';
+
+                if ($verificationStatus === 'Rejected') {
+                    $displayStatus = 'Absent';
+                } elseif ($verificationStatus === 'Pending') {
+                    $displayStatus = 'Pending';
+                } else {
+                    $displayStatus = $item->status;
+                }
 
                 $sessionType = ucfirst(strtolower($item->session_type ?? 'Lecture'));
                 $label = $sessionType;
@@ -341,7 +347,10 @@ class AttendanceController extends Controller
         $codeGeneratedAt = Carbon::parse($attendanceCode->generated_at);
         $lateThreshold = (clone $codeGeneratedAt)->addMinutes(15);
 
-        $status = $now->gt($lateThreshold) ? 'Late' : 'Present';
+        $computedStatus = $now->gt($lateThreshold) ? 'Late' : 'Present';
+
+        // Module attendance requires lecturer verification before it counts.
+        $verificationStatus = $isModule ? 'Pending' : 'Approved';
 
         $latitude = $request->latitude;
         $longitude = $request->longitude;
@@ -354,7 +363,8 @@ class AttendanceController extends Controller
         $attendanceData = [
             'student_id' => $resolvedStudentId,
             $sessionForeignKey => $attendanceCode->{$sessionForeignKey},
-            'status' => $status,
+            'status' => $computedStatus,
+            'verification_status' => $verificationStatus,
             'created_at' => Carbon::now(),
             'updated_at' => Carbon::now(),
         ];
@@ -374,8 +384,10 @@ class AttendanceController extends Controller
         DB::table($attendanceTable)->insert($attendanceData);
 
         return response()->json([
-            'message' => 'Attendance submitted successfully',
-            'status' => $status,
+            'message' => $isModule
+                ? 'Attendance submitted successfully. Waiting for lecturer verification.'
+                : 'Attendance submitted successfully',
+            'status' => $isModule ? 'Pending' : $computedStatus,
             'attendance_type' => $request->attendance_type,
             'subject_id' => $request->subject_id,
             'location_name' => $locationName ?? 'Location verified successfully',
@@ -426,11 +438,12 @@ class AttendanceController extends Controller
     {
         $request->validate([
             'status' => 'required|in:Present,Late,Absent',
-            'attendance_type' => 'nullable|in:course,module',
+            'attendance_type' => 'required|in:course,module',
         ]);
 
-        $attendanceType = $request->input('attendance_type', 'course');
-        $attendanceTable = $attendanceType === 'module' ? 'module_attendances' : 'attendances';
+        $attendanceTable = $request->attendance_type === 'module'
+            ? 'module_attendances'
+            : 'attendances';
 
         $attendance = DB::table($attendanceTable)
             ->where('id', $attendanceId)
@@ -438,7 +451,8 @@ class AttendanceController extends Controller
 
         if (!$attendance) {
             return response()->json([
-                'message' => 'Attendance record not found'
+                'message' => 'Attendance record not found',
+                'table' => $attendanceTable
             ], 404);
         }
 
@@ -451,14 +465,13 @@ class AttendanceController extends Controller
             ->update([
                 'status' => $request->status,
                 'verification_status' => $verificationStatus,
-                'updated_at' => Carbon::now()
+                'updated_at' => now(),
             ]);
 
         return response()->json([
-            'message' => 'Attendance record updated successfully',
-            'attendance_id' => $attendanceId,
-            'status' => $request->status,
-            'verification_status' => $verificationStatus
+            'message' => 'Attendance updated successfully',
+            'id' => $attendanceId,
+            'status' => $request->status
         ]);
     }
 

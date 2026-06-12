@@ -87,7 +87,9 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
   @override
   void initState() {
     super.initState();
-    loadSession();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadSession();
+    });
   }
 
   Future<void> loadSession() async {
@@ -342,8 +344,17 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       }
 
       if (response.statusCode == 200) {
+        final submittedStatus = data['status']?.toString() ?? '';
+        final isModule = _normalizedAttendanceType == 'module';
+
+        final message = isModule
+            ? (data['message']?.toString() ??
+                'Attendance submitted. Waiting for lecturer verification.')
+            : (data['message']?.toString() ??
+                'Attendance submitted${submittedStatus.isNotEmpty ? ' as $submittedStatus' : ''}.');
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['message']?.toString() ?? 'Attendance submitted')),
+          SnackBar(content: Text(message)),
         );
         codeController.clear();
         fetchAttendanceData();
@@ -894,6 +905,8 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         return const Color(0xFFE0A92F);
       case 'Absent':
         return const Color(0xFFF06A6A);
+      case 'Pending':
+        return const Color(0xFF8A92A3);
       default:
         return Colors.black54;
     }
@@ -907,6 +920,8 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         return const Color(0xFFFFF3D8);
       case 'Absent':
         return const Color(0xFFFFE6E6);
+      case 'Pending':
+        return const Color(0xFFF1F3F7);
       default:
         return const Color(0xFFF3F3F3);
     }

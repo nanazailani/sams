@@ -1,7 +1,4 @@
-
-
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -25,9 +22,13 @@ class AttendanceRecord {
   });
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
-    final verificationStatus = (json['verification_status'] ?? 'Pending').toString();
+    final verificationStatus = (json['verification_status'] ?? 'Pending').toString().toLowerCase();
     final originalStatus = (json['status'] ?? 'Pending').toString();
-    final displayStatus = verificationStatus == 'Rejected' ? 'Absent' : originalStatus;
+    final displayStatus = verificationStatus == 'rejected'
+        ? 'Absent'
+        : (verificationStatus == 'approved'
+            ? originalStatus
+            : (verificationStatus == 'pending' ? 'Pending' : originalStatus));
 
     return AttendanceRecord(
       id: json['id'].toString(),
@@ -78,15 +79,7 @@ class ViewAttendancePage extends StatefulWidget {
 
 class _ViewAttendancePageState extends State<ViewAttendancePage> {
   String get _baseUrl {
-    if (Platform.isAndroid) {
-
-      //return 'http://127.0.0.1:8000/api';
-      // return 'http://127.0.0.1:8000/api';
-
-      return 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
-    }
     return 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
-    //return 'http://127.0.0.1:8000/api';
   }
 
   bool _isLoading = true;
@@ -99,7 +92,9 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
   @override
   void initState() {
     super.initState();
-    _fetchRecords();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchRecords();
+    });
   }
 
   @override
@@ -115,13 +110,15 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
 
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/attendance/${widget.classSessionId}/submissions'),
+        Uri.parse(
+          '$_baseUrl/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}',
+        ),
       );
 
       if (response.statusCode != 200) {
         throw Exception('Failed to load attendance records');
       }
-
+    debugPrint('RAW RESPONSE => ${response.body}');
       final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
 
       setState(() {
@@ -144,7 +141,7 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
   }
 
   Future<void> _editRecord(AttendanceRecord record) async {
-    String selectedStatus = record.status;
+    String selectedStatus = record.status == 'Pending' ? 'Present' : record.status;
 
     final updatedStatus = await showDialog<String>(
       context: context,
@@ -194,11 +191,18 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
     if (updatedStatus == null) return;
 
     try {
+      debugPrint('attendanceType = ${widget.attendanceType}');
+debugPrint('PUT URL => $_baseUrl/attendance/records/${record.id}');
       final response = await http.put(
         Uri.parse('$_baseUrl/attendance/records/${record.id}'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': updatedStatus}),
+        body: jsonEncode({
+          'status': updatedStatus,
+          'attendance_type': widget.attendanceType,
+        }),
       );
+      debugPrint('PUT STATUS => ${response.statusCode}');
+debugPrint('PUT BODY => ${response.body}');
 
       if (response.statusCode != 200) {
         throw Exception('Failed to update attendance');
@@ -220,7 +224,9 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
   Future<void> _deleteRecord(AttendanceRecord record) async {
     try {
       final response = await http.delete(
-        Uri.parse('$_baseUrl/attendance/records/${record.id}'),
+        Uri.parse(
+          '$_baseUrl/attendance/records/${record.id}?attendance_type=${widget.attendanceType}',
+        ),
       );
 
       if (response.statusCode != 200) {
@@ -278,6 +284,8 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
         return const Color(0xFFE39B00);
       case 'absent':
         return const Color(0xFFE05050);
+      case 'pending':
+        return const Color(0xFF7A8194);
       default:
         return const Color(0xFF7A8194);
     }
@@ -291,6 +299,8 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
         return const Color(0xFFFFF1CF);
       case 'absent':
         return const Color(0xFFFFE0E0);
+      case 'pending':
+        return const Color(0xFFF1F3F7);
       default:
         return const Color(0xFFF1F3F7);
     }
@@ -455,309 +465,311 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
         textTheme: Theme.of(context).textTheme.apply(fontFamily: 'Nunito'),
       ),
       child: Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF244E99),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        titleSpacing: 0,
-        title: const Text(
-          'View Record History',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
+        backgroundColor: const Color(0xFFF4F5F7),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF244E99),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            // ✅ FIX: pass true bila balik supaya AttendancePage tahu nak refresh
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+          titleSpacing: 0,
+          title: const Text(
+            'View Record History',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 16,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.subjectName,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1F232B),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.sessionLabel,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF525A6A),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.timeRange,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2E3440),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF7F8FB),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: const Color(0xFFE1E5EE)),
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: (value) {
-                                setState(() {
-                                  _searchQuery = value;
-                                });
-                              },
-                              decoration: const InputDecoration(
-                                hintText: 'Search Matric ID / Name',
-                                hintStyle: TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF8A92A3),
-                                ),
-                                border: InputBorder.none,
-                                isDense: true,
-                                prefixIcon: Padding(
-                                  padding: EdgeInsets.only(left: 12, right: 10),
-                                  child: Icon(Icons.search, color: Color(0xFF6F7A8C), size: 24),
-                                ),
-                                prefixIconConstraints: BoxConstraints(
-                                  minWidth: 0,
-                                  minHeight: 0,
-                                ),
-                                contentPadding: EdgeInsets.only(top: 12, bottom: 12),
-                              ),
-                            ),
-                          ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.subjectName,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F232B),
                         ),
-                        const SizedBox(width: 10),
-                        _ActionIconButton(
-                          icon: Icons.sort_rounded,
-                          onTap: _showSortSheet,
-                        ),
-                        const SizedBox(width: 8),
-                        _ActionIconButton(
-                          icon: Icons.print_outlined,
-                          onTap: _handlePrint,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFDFDFE),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFE9EDF4)),
                       ),
-                      child: Column(
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.sessionLabel,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF525A6A),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.timeRange,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2E3440),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF6F7FB),
-                              borderRadius: BorderRadius.only(
-                                topLeft: Radius.circular(18),
-                                topRight: Radius.circular(18),
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7F8FB),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFE1E5EE)),
                               ),
-                            ),
-                            child: const Row(
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    'MATRIC NO',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF6F7A8C),
-                                    ),
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                  });
+                                },
+                                decoration: const InputDecoration(
+                                  hintText: 'Search Matric ID / Name',
+                                  hintStyle: TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF8A92A3),
                                   ),
-                                ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    'STUDENT NAME',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF6F7A8C),
-                                    ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  prefixIcon: Padding(
+                                    padding: EdgeInsets.only(left: 12, right: 10),
+                                    child: Icon(Icons.search, color: Color(0xFF6F7A8C), size: 24),
                                   ),
-                                ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Center(
-                                    child: Text(
-                                      'STATUS',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF6F7A8C),
-                                      ),
-                                    ),
+                                  prefixIconConstraints: BoxConstraints(
+                                    minWidth: 0,
+                                    minHeight: 0,
                                   ),
+                                  contentPadding: EdgeInsets.only(top: 12, bottom: 12),
                                 ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Center(
-                                    child: Text(
-                                      'ACTION',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF6F7A8C),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                          if (_isLoading)
-                            const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            )
-                          else if (records.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Text(
-                                'No attendance records found.',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF6F7A8C),
+                          const SizedBox(width: 10),
+                          _ActionIconButton(
+                            icon: Icons.sort_rounded,
+                            onTap: _showSortSheet,
+                          ),
+                          const SizedBox(width: 8),
+                          _ActionIconButton(
+                            icon: Icons.print_outlined,
+                            onTap: _handlePrint,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDFDFE),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFE9EDF4)),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF6F7FB),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: Radius.circular(18),
+                                  topRight: Radius.circular(18),
                                 ),
                               ),
-                            )
-                          else
-                            ...List.generate(records.length, (index) {
-                              final record = records[index];
-
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    top: BorderSide(
-                                      color: index == 0
-                                          ? Colors.transparent
-                                          : const Color(0xFFE9EDF4),
+                              child: const Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      'MATRIC NO',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF6F7A8C),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 3,
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      'STUDENT NAME',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF6F7A8C),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Center(
                                       child: Text(
-                                        record.matricNo,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Color(0xFF20242C),
+                                        'STATUS',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF6F7A8C),
                                         ),
                                       ),
                                     ),
-                                    Expanded(
-                                      flex: 3,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(right: 10),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Center(
+                                      child: Text(
+                                        'ACTION',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF6F7A8C),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_isLoading)
+                              const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            else if (records.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Text(
+                                  'No attendance records found.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF6F7A8C),
+                                  ),
+                                ),
+                              )
+                            else
+                              ...List.generate(records.length, (index) {
+                                final record = records[index];
+
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: index == 0
+                                            ? Colors.transparent
+                                            : const Color(0xFFE9EDF4),
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
                                         child: Text(
-                                          record.studentName,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
+                                          record.matricNo,
                                           style: const TextStyle(
                                             fontSize: 13,
                                             color: Color(0xFF20242C),
-                                            height: 1.25,
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    Expanded(
-                                      flex: 3,
-                                      child: Center(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: _statusBackgroundColor(record.status),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
+                                      Expanded(
+                                        flex: 3,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(right: 10),
                                           child: Text(
-                                            record.status,
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: _statusTextColor(record.status),
+                                            record.studentName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Color(0xFF20242C),
+                                              height: 1.25,
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          _MiniActionButton(
-                                            label: 'Edit',
-                                            backgroundColor: const Color(0xFF14B85A),
-                                            onTap: () => _editRecord(record),
+                                      Expanded(
+                                        flex: 3,
+                                        child: Center(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: _statusBackgroundColor(record.status),
+                                              borderRadius: BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              record.status,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: _statusTextColor(record.status),
+                                              ),
+                                            ),
                                           ),
-                                          const SizedBox(height: 8),
-                                          _MiniActionButton(
-                                            label: 'Delete',
-                                            backgroundColor: const Color(0xFFF44336),
-                                            onTap: () => _confirmDelete(record),
-                                          ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                        ],
+                                      Expanded(
+                                        flex: 2,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _MiniActionButton(
+                                              label: 'Edit',
+                                              backgroundColor: const Color(0xFF14B85A),
+                                              onTap: () => _editRecord(record),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            _MiniActionButton(
+                                              label: 'Delete',
+                                              backgroundColor: const Color(0xFFF44336),
+                                              onTap: () => _confirmDelete(record),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-        ),
       ),
-      );
+    );
   }
 }
 

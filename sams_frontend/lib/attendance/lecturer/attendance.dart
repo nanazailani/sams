@@ -8,7 +8,7 @@ import 'view_attendance.dart';
 
 class AttendancePage extends StatefulWidget {
   final int classSessionId;
-  final int subjectId;        // ← NEW
+  final int subjectId;
   final String subjectCode;
   final String subjectName;
   final String classDate;
@@ -19,7 +19,7 @@ class AttendancePage extends StatefulWidget {
   const AttendancePage({
     super.key,
     required this.classSessionId,
-    required this.subjectId,        // ← NEW
+    required this.subjectId,
     required this.subjectCode,
     required this.subjectName,
     required this.classDate,
@@ -90,7 +90,9 @@ class _AttendancePageState extends State<AttendancePage> {
   @override
   void initState() {
     super.initState();
-    fetchSubmissions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      fetchSubmissions();
+    });
   }
 
   Future<void> fetchSubmissions() async {
@@ -166,14 +168,18 @@ class _AttendancePageState extends State<AttendancePage> {
         fetchSubmissions();
       } else {
         final message = data['message']?.toString() ?? 'Failed to generate code.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to connect to server: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to connect to server: $e')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -186,7 +192,6 @@ class _AttendancePageState extends State<AttendancePage> {
   void _showQrCodeDialog() {
     if (attendanceCode.isEmpty) return;
 
-    // ✅ Now uses widget.subjectId (e.g. 15) instead of widget.classSessionId (e.g. 3)
     final deepLink =
         'attendease://attendance?code=$attendanceCode'
         '&subject_id=${widget.subjectId}'
@@ -331,6 +336,8 @@ class _AttendancePageState extends State<AttendancePage> {
         return const Color(0xFFE0A92F);
       case 'Absent':
         return const Color(0xFFF06A6A);
+      case 'Pending':
+        return const Color(0xFF8A92A3);
       default:
         return Colors.black54;
     }
@@ -344,6 +351,8 @@ class _AttendancePageState extends State<AttendancePage> {
         return const Color(0xFFFFF3D8);
       case 'Absent':
         return const Color(0xFFFFE6E6);
+      case 'Pending':
+        return const Color(0xFFF1F3F7);
       default:
         return const Color(0xFFF3F3F3);
     }
@@ -569,8 +578,9 @@ class _AttendancePageState extends State<AttendancePage> {
                         children: [
                           Expanded(
                             child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
+                              // ✅ FIX 1: await navigation then refresh
+                              onTap: () async {
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => VerifyAttendancePage(
@@ -584,6 +594,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                     ),
                                   ),
                                 );
+                                fetchSubmissions(); // ← runs after returning
                               },
                               child: _buildFeatureCard(
                                 icon: Icons.verified_user_outlined,
@@ -594,8 +605,9 @@ class _AttendancePageState extends State<AttendancePage> {
                           const SizedBox(width: 14),
                           Expanded(
                             child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
+                              // ✅ FIX 3: await navigation then refresh (sync with View Record History edits/deletes)
+                              onTap: () async {
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => ViewAttendancePage(
@@ -609,6 +621,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                     ),
                                   ),
                                 );
+                                fetchSubmissions(); // ← runs after returning
                               },
                               child: _buildFeatureCard(
                                 icon: Icons.assignment_outlined,
@@ -735,8 +748,15 @@ class _AttendancePageState extends State<AttendancePage> {
                                 final item = submissions[index];
                                 final originalStatus = item['status'] ?? '';
                                 final verificationStatus = item['verification_status'] ?? 'Pending';
-                                final status =
-                                    verificationStatus == 'Rejected' ? 'Absent' : originalStatus;
+                                final verificationStatusNorm = verificationStatus.toLowerCase();
+                                // ✅ FIX 2: approved → original status (Present/Late), rejected → Absent, pending → Pending
+                                final status = verificationStatusNorm == 'rejected'
+                                    ? 'Absent'
+                                    : (verificationStatusNorm == 'approved'
+                                        ? originalStatus
+                                        : (verificationStatusNorm == 'pending'
+                                            ? 'Pending'
+                                            : originalStatus));
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                   decoration: BoxDecoration(
