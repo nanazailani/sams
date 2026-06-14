@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class AddSessionPage extends StatefulWidget {
+  // Info subjek yang dipassing dari page sebelum ni
   final int lecturerId;
   final String subjectId;
   final String subjectCode;
@@ -22,40 +23,45 @@ class AddSessionPage extends StatefulWidget {
 
 class _AddSessionPageState extends State<AddSessionPage> {
   final _formKey = GlobalKey<FormState>();
-  bool isLoading = false;
-  bool isFetchingSections = false;
+  bool isLoading = false;         // Loading state masa submit form
+  bool isFetchingSections = false; // Loading state masa fetch sections dari API
 
   final weekController = TextEditingController();
 
   DateTime? selectedDate;
   TimeOfDay? startTime;
   TimeOfDay? endTime;
-  String selectedSessionType = 'Lecture';
+  String selectedSessionType = 'Lecture'; // Default: Lecture
 
-  // Section data from DB
+  // Senarai sections dari database & section yang dipilih
   List<Map<String, dynamic>> sectionOptions = [];
   Map<String, dynamic>? selectedSection;
 
   @override
   void initState() {
     super.initState();
+    // Fetch sections untuk Lecture by default bila page ni dibuka
     _fetchSections('Lecture');
   }
 
   @override
   void dispose() {
+    // Dispose controller elak memory leak
     weekController.dispose();
     super.dispose();
   }
 
+  /// Fetch senarai sections dari API berdasarkan jenis sesi (lecture/lab).
+  /// Bila session type bertukar, list section akan reset dan fetch semula.
   Future<void> _fetchSections(String sessionType) async {
     setState(() {
       isFetchingSections = true;
-      sectionOptions = [];
-      selectedSection = null;
+      sectionOptions = [];     // Reset list lama
+      selectedSection = null;  // Reset pilihan lama
     });
 
     try {
+      // Convert session type ke lowercase untuk query param
       final type = sessionType == 'Lecture' ? 'lecture' : 'lab';
       final response = await http
           .get(Uri.parse(
@@ -63,12 +69,14 @@ class _AddSessionPageState extends State<AddSessionPage> {
           ))
           .timeout(const Duration(seconds: 10));
 
+      // Kalau widget dah disposed (user keluar), jangan proceed
       if (!mounted) return;
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
         setState(() {
           sectionOptions = data.map((e) => Map<String, dynamic>.from(e)).toList();
+          // Auto-select section pertama & auto-fill masa dia
           if (sectionOptions.isNotEmpty) {
             selectedSection = sectionOptions.first;
             _autoFillTime(sectionOptions.first);
@@ -78,12 +86,14 @@ class _AddSessionPageState extends State<AddSessionPage> {
     } catch (e) {
       debugPrint('Error fetching sections: $e');
     } finally {
+      // Pastikan loading indicator dimatikan walaupun ada error
       if (mounted) setState(() => isFetchingSections = false);
     }
   }
 
+  /// Auto-fill masa start dan end berdasarkan data section yang dipilih.
+  /// Format masa yang dijangka dari API: "08:00-10:00" atau "8:00 AM-10:00 AM"
   void _autoFillTime(Map<String, dynamic> section) {
-    // Auto-fill time from section data if available
     final timeStr = section['time']?.toString() ?? '';
     if (timeStr.isNotEmpty && timeStr.contains('-')) {
       final parts = timeStr.split('-');
@@ -100,12 +110,15 @@ class _AddSessionPageState extends State<AddSessionPage> {
     }
   }
 
+  /// Parse string masa seperti "08:00" atau "8:00" jadi TimeOfDay.
+  /// Return null kalau format tak valid.
   TimeOfDay? _parseTime(String timeStr) {
     try {
-      // Handle format like "08:00" or "8:00"
+      // Handle format "08:00" atau "8:00"
       final parts = timeStr.split(':');
       if (parts.length >= 2) {
         final hour = int.tryParse(parts[0].trim());
+        // Ambil 2 digit pertama je dari minit (abaikan AM/PM kalau ada)
         final minute = int.tryParse(parts[1].trim().substring(0, 2));
         if (hour != null && minute != null) {
           return TimeOfDay(hour: hour, minute: minute);
@@ -115,17 +128,21 @@ class _AddSessionPageState extends State<AddSessionPage> {
     return null;
   }
 
+  /// Format TimeOfDay ke string "HH:mm:ss" untuk hantar ke API
   String _formatTime(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
 
+  /// Format DateTime ke string "YYYY-MM-DD" untuk hantar ke API
   String _formatDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// Format DateTime untuk display pada UI, contoh: "14 Jun 2026"
   String _displayDate(DateTime d) {
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 
+  /// Format TimeOfDay ke 12-jam format untuk display, contoh: "8:00 AM"
   String _displayTime(TimeOfDay t) {
     final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
     final minute = t.minute.toString().padLeft(2, '0');
@@ -133,6 +150,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
     return '$hour:$minute $suffix';
   }
 
+  /// Buka date picker untuk user pilih tarikh sesi
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -140,6 +158,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
       firstDate: DateTime(2026),
       lastDate: DateTime(2028),
       builder: (context, child) => Theme(
+        // Override warna picker ikut color scheme SAMS
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.light(primary: Color(0xFF2E4E96)),
         ),
@@ -149,9 +168,12 @@ class _AddSessionPageState extends State<AddSessionPage> {
     if (picked != null) setState(() => selectedDate = picked);
   }
 
+  /// Buka time picker untuk user pilih masa mula atau masa tamat.
+  /// [isStart] = true untuk start time, false untuk end time.
   Future<void> _pickTime(bool isStart) async {
     final picked = await showTimePicker(
       context: context,
+      // Guna masa yang dah dipilih sebelum ni sebagai initial value
       initialTime: isStart
           ? (startTime ?? const TimeOfDay(hour: 8, minute: 0))
           : (endTime ?? const TimeOfDay(hour: 10, minute: 0)),
@@ -170,7 +192,9 @@ class _AddSessionPageState extends State<AddSessionPage> {
     }
   }
 
+  /// Validate semua input dan submit form ke API untuk create class session baru.
   Future<void> _submit() async {
+    // Validate form fields dulu
     if (!_formKey.currentState!.validate()) return;
     if (selectedDate == null) {
       _showSnack('Please select a date', isError: true);
@@ -189,6 +213,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
       return;
     }
 
+    // Pastikan end time mesti selepas start time
     final startMinutes = startTime!.hour * 60 + startTime!.minute;
     final endMinutes = endTime!.hour * 60 + endTime!.minute;
     if (endMinutes <= startMinutes) {
@@ -199,12 +224,14 @@ class _AddSessionPageState extends State<AddSessionPage> {
     setState(() => isLoading = true);
 
     try {
+      // Resolve section name — API boleh return dalam pelbagai key name
       final sectionName = selectedSection!['section_name']?.toString()
           ?? selectedSection!['lab_name']?.toString()
           ?? selectedSection!['name']?.toString()
           ?? '';
       final venue = selectedSection!['location']?.toString() ?? '';
 
+      // POST request ke API untuk create session baru
       final response = await http.post(
         Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/class-sessions'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
@@ -224,10 +251,12 @@ class _AddSessionPageState extends State<AddSessionPage> {
       if (!mounted) return;
 
       if (response.statusCode == 201) {
+        // Session berjaya dicipta — balik ke page sebelum dengan result = true
         _showSnack('Session added successfully!');
         await Future.delayed(const Duration(milliseconds: 800));
-        if (mounted) Navigator.pop(context, true);
+        if (mounted) Navigator.pop(context, true); // true = page perlu refresh
       } else {
+        // Tunjuk error message dari API
         final data = json.decode(response.body);
         _showSnack(data['message'] ?? 'Failed to add session', isError: true);
       }
@@ -238,6 +267,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
     }
   }
 
+  /// Helper untuk tunjuk snackbar — merah kalau error, biru kalau success
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
@@ -263,11 +293,11 @@ class _AddSessionPageState extends State<AddSessionPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Subject info
+              // Card info subjek — tunjuk code & nama subjek kat atas sekali
               _buildInfoCard(),
               const SizedBox(height: 16),
 
-              // Session Type toggle
+              // Toggle Lecture / Lab — bila bertukar, sections akan di-fetch semula
               _buildCard(
                 title: 'Session Type',
                 children: [
@@ -277,6 +307,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
                       return Expanded(
                         child: GestureDetector(
                           onTap: () {
+                            // Elak fetch semula kalau type sama
                             if (selectedSessionType != type) {
                               setState(() => selectedSessionType = type);
                               _fetchSections(type);
@@ -289,6 +320,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
                             ),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
+                              // Highlight button yang dipilih dengan warna biru
                               color: isSelected
                                   ? const Color(0xFF2E4E96)
                                   : const Color(0xFFF6F7FB),
@@ -317,11 +349,12 @@ class _AddSessionPageState extends State<AddSessionPage> {
               ),
               const SizedBox(height: 16),
 
-              // Section dropdown from DB
+              // Dropdown sections — populated dari API, auto-fill masa bila pilih
               _buildCard(
                 title: 'Section',
                 children: [
                   isFetchingSections
+                      // Tunjuk loading spinner masa fetch sections
                       ? const Center(
                           child: Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
@@ -332,6 +365,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
                           ),
                         )
                       : sectionOptions.isEmpty
+                          // Kalau takde sections, tunjuk mesej kosong
                           ? Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -345,11 +379,13 @@ class _AddSessionPageState extends State<AddSessionPage> {
                                     fontSize: 13, color: Colors.black45),
                               ),
                             )
+                          // Dropdown dengan semua sections yang ada
                           : DropdownButtonFormField<Map<String, dynamic>>(
                               value: selectedSection,
                               decoration: _inputDecoration('Select section'),
                               isExpanded: true,
                               items: sectionOptions.map((section) {
+                                // Handle pelbagai key name dari API
                                 final sectionName =
                                     section['section_name']?.toString()
                                     ?? section['lab_name']?.toString()
@@ -360,6 +396,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
                                 final location = section['location']?.toString() ?? '';
                                 return DropdownMenuItem<Map<String, dynamic>>(
                                   value: section,
+                                  // Format: "A1  •  Monday 08:00-10:00  •  DK1"
                                   child: Text(
                                     '$sectionName  •  $day $time  •  $location',
                                     style: const TextStyle(fontSize: 12),
@@ -369,13 +406,14 @@ class _AddSessionPageState extends State<AddSessionPage> {
                               }).toList(),
                               onChanged: (val) {
                                 setState(() => selectedSection = val);
+                                // Auto-fill masa bila section bertukar
                                 if (val != null) _autoFillTime(val);
                               },
                               validator: (v) =>
                                   v == null ? 'Please select a section' : null,
                             ),
 
-                  // Show selected section details
+                  // Detail section yang dipilih — venue, hari, masa, instructor
                   if (selectedSection != null) ...[
                     const SizedBox(height: 12),
                     Container(
@@ -403,6 +441,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
                             'Time',
                             selectedSection!['time']?.toString() ?? '-',
                           ),
+                          // Instructor hanya dipaparkan kalau data ada
                           if (selectedSection!['instructor_name'] != null) ...[
                             const SizedBox(height: 6),
                             _buildDetailRow(
@@ -419,7 +458,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
               ),
               const SizedBox(height: 16),
 
-              // Week number
+              // Input minggu — wajib diisi, angka sahaja
               _buildCard(
                 title: 'Week Number',
                 children: [
@@ -438,7 +477,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
               ),
               const SizedBox(height: 16),
 
-              // Date & Time
+              // Date & Time pickers — tap untuk buka dialog pilihan
               _buildCard(
                 title: 'Date & Time',
                 children: [
@@ -483,7 +522,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
               ),
               const SizedBox(height: 28),
 
-              // Submit
+              // Butang submit — disable dan tunjuk spinner masa loading
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -517,6 +556,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
     );
   }
 
+  /// Card info subjek kat bahagian atas form — tunjuk kod dan nama subjek
   Widget _buildInfoCard() {
     return Container(
       width: double.infinity,
@@ -556,6 +596,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
     );
   }
 
+  /// Reusable card container dengan title dan senarai children widgets
   Widget _buildCard({required String title, required List<Widget> children}) {
     return Container(
       width: double.infinity,
@@ -579,6 +620,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
     );
   }
 
+  /// Row untuk tunjuk detail section — icon, label, dan value dalam satu baris
   Widget _buildDetailRow(IconData icon, String label, String value) {
     return Row(
       children: [
@@ -598,6 +640,8 @@ class _AddSessionPageState extends State<AddSessionPage> {
     );
   }
 
+  /// Tile untuk date/time picker — tunjuk icon, label, dan nilai yang dipilih.
+  /// Warna bertukar bila value dah ada (biru) vs belum pilih (kelabu)
   Widget _buildPickerTile({
     required String label,
     required String value,
@@ -625,6 +669,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
               border: Border.all(color: const Color(0xFFDDDDDD)),
             ),
             child: Row(children: [
+              // Icon biru kalau dah ada value, kelabu kalau belum
               Icon(icon,
                   size: 18,
                   color: hasValue
@@ -634,8 +679,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
               Text(value,
                   style: TextStyle(
                       fontSize: 13,
-                      color:
-                          hasValue ? Colors.black87 : Colors.black38)),
+                      color: hasValue ? Colors.black87 : Colors.black38)),
             ]),
           ),
         ),
@@ -643,6 +687,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
     );
   }
 
+  /// Reusable input decoration untuk TextFormField dan DropdownButtonFormField
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -659,6 +704,7 @@ class _AddSessionPageState extends State<AddSessionPage> {
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
       ),
+      // Border bertukar biru bila field dalam focus
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFF2E4E96)),
