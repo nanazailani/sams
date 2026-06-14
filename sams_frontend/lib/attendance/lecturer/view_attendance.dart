@@ -6,12 +6,14 @@ import 'package:http/http.dart' as http;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+/// Model untuk satu rekod kehadiran pelajar.
+/// Status yang dipaparkan bergantung pada verification_status dari API.
 class AttendanceRecord {
   final String id;
   final String matricNo;
   final String studentName;
-  final String status;
-  final String? submittedAt;
+  final String status;       // Display status: Present / Late / Absent / Pending
+  final String? submittedAt; // Masa submit (boleh null kalau takde)
 
   const AttendanceRecord({
     required this.id,
@@ -21,6 +23,11 @@ class AttendanceRecord {
     this.submittedAt,
   });
 
+  /// Parse JSON dari API dan resolve display status berdasarkan verification_status.
+  /// Logic:
+  /// - rejected  → Absent (dikira tidak hadir walaupun status asal Present/Late)
+  /// - approved  → guna status asal (Present / Late)
+  /// - pending   → Pending (belum disahkan lecturer)
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
     final verificationStatus = (json['verification_status'] ?? 'Pending').toString().toLowerCase();
     final originalStatus = (json['status'] ?? 'Pending').toString();
@@ -40,6 +47,7 @@ class AttendanceRecord {
   }
 }
 
+/// Pilihan sort untuk table rekod kehadiran
 enum AttendanceSortOption {
   matricAsc,
   matricDesc,
@@ -52,13 +60,13 @@ enum AttendanceSortOption {
 class ViewAttendancePage extends StatefulWidget {
   final String classSessionId;
   final String subjectName;
-  final String sessionLabel;
-  final String timeRange;
+  final String sessionLabel; // Contoh: "Lecture Session - Saturday, 14 June 2026"
+  final String timeRange;    // Contoh: "8:00 am - 10:00 am"
   final String attendanceType;
-  final List<AttendanceRecord> records;
-  final ValueChanged<AttendanceRecord>? onEdit;
-  final ValueChanged<AttendanceRecord>? onDelete;
-  final VoidCallback? onPrint;
+  final List<AttendanceRecord> records; // Optional initial records (biasanya kosong, fetch dari API)
+  final ValueChanged<AttendanceRecord>? onEdit;   // Callback optional untuk parent
+  final ValueChanged<AttendanceRecord>? onDelete; // Callback optional untuk parent
+  final VoidCallback? onPrint;                    // Callback optional untuk parent
 
   const ViewAttendancePage({
     super.key,
@@ -78,20 +86,22 @@ class ViewAttendancePage extends StatefulWidget {
 }
 
 class _ViewAttendancePageState extends State<ViewAttendancePage> {
+  /// Base URL API — getter supaya senang tukar kalau environment berubah
   String get _baseUrl {
     return 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
   }
 
   bool _isLoading = true;
-  bool _isPrinting = false;
+  bool _isPrinting = false;          // Loading state semasa generate PDF
   List<AttendanceRecord> _records = [];
   final TextEditingController _searchController = TextEditingController();
-  AttendanceSortOption _sortOption = AttendanceSortOption.matricAsc;
+  AttendanceSortOption _sortOption = AttendanceSortOption.matricAsc; // Default sort: matric A-Z
   String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
+    // Fetch selepas first frame render untuk elak setState semasa build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchRecords();
     });
@@ -99,10 +109,12 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchController.dispose(); // Dispose controller elak memory leak
     super.dispose();
   }
 
+  /// Fetch semua rekod kehadiran untuk sesi ni dari API.
+  /// Guna ?type= untuk API tahu table mana (attendances atau module_attendances).
   Future<void> _fetchRecords() async {
     setState(() {
       _isLoading = true;
@@ -118,10 +130,12 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
       if (response.statusCode != 200) {
         throw Exception('Failed to load attendance records');
       }
-    debugPrint('RAW RESPONSE => ${response.body}');
+
+      debugPrint('RAW RESPONSE => ${response.body}');
       final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
 
       setState(() {
+        // Parse setiap item guna AttendanceRecord.fromJson
         _records = data
             .map((item) => AttendanceRecord.fromJson(Map<String, dynamic>.from(item)))
             .toList();
@@ -140,9 +154,14 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
     }
   }
 
+  /// Buka dialog edit status kehadiran pelajar.
+  /// Status Pending diconvert ke Present sebagai default pilihan dalam dropdown.
+  /// Selepas save, hantar PUT request ke API dan refresh records.
   Future<void> _editRecord(AttendanceRecord record) async {
+    // Kalau status Pending, default ke Present dalam dropdown
     String selectedStatus = record.status == 'Pending' ? 'Present' : record.status;
 
+    // StatefulBuilder supaya dropdown dalam dialog boleh update tanpa rebuild page
     final updatedStatus = await showDialog<String>(
       context: context,
       builder: (context) {
@@ -154,7 +173,7 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(record.studentName),
+                  Text(record.studentName), // Tunjuk nama pelajar sebagai context
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: selectedStatus,
@@ -165,6 +184,7 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
                     ],
                     onChanged: (value) {
                       if (value == null) return;
+                      // Guna setLocalState (bukan setState) untuk update dalam dialog sahaja
                       setLocalState(() {
                         selectedStatus = value;
                       });
@@ -174,11 +194,11 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => Navigator.of(context).pop(), // null = cancel
                   child: const Text('Cancel'),
                 ),
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(selectedStatus),
+                  onPressed: () => Navigator.of(context).pop(selectedStatus), // return status
                   child: const Text('Save'),
                 ),
               ],
@@ -188,21 +208,24 @@ class _ViewAttendancePageState extends State<ViewAttendancePage> {
       },
     );
 
+    // Kalau user cancel dialog, updatedStatus = null — stop sini
     if (updatedStatus == null) return;
 
     try {
       debugPrint('attendanceType = ${widget.attendanceType}');
-debugPrint('PUT URL => $_baseUrl/attendance/records/${record.id}');
+      debugPrint('PUT URL => $_baseUrl/attendance/records/${record.id}');
+
       final response = await http.put(
         Uri.parse('$_baseUrl/attendance/records/${record.id}'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'status': updatedStatus,
-          'attendance_type': widget.attendanceType,
+          'attendance_type': widget.attendanceType, // API perlukan ni untuk tahu table mana
         }),
       );
+
       debugPrint('PUT STATUS => ${response.statusCode}');
-debugPrint('PUT BODY => ${response.body}');
+      debugPrint('PUT BODY => ${response.body}');
 
       if (response.statusCode != 200) {
         throw Exception('Failed to update attendance');
@@ -212,6 +235,7 @@ debugPrint('PUT BODY => ${response.body}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Attendance updated successfully.')),
       );
+      // Refresh list selepas edit supaya data terkini
       await _fetchRecords();
     } catch (error) {
       if (!mounted) return;
@@ -221,6 +245,8 @@ debugPrint('PUT BODY => ${response.body}');
     }
   }
 
+  /// Hantar DELETE request ke API untuk padam rekod kehadiran.
+  /// attendance_type dihantar sebagai query param (bukan body) sebab DELETE request.
   Future<void> _deleteRecord(AttendanceRecord record) async {
     try {
       final response = await http.delete(
@@ -237,6 +263,7 @@ debugPrint('PUT BODY => ${response.body}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Attendance deleted successfully.')),
       );
+      // Refresh list selepas delete
       await _fetchRecords();
     } catch (error) {
       if (!mounted) return;
@@ -246,9 +273,13 @@ debugPrint('PUT BODY => ${response.body}');
     }
   }
 
+  /// Getter yang return list records yang dah difilter dan disort.
+  /// Filter: cari dalam matric, nama, atau status (case-insensitive).
+  /// Sort: ikut _sortOption yang dipilih user.
   List<AttendanceRecord> get _filteredRecords {
     final query = _searchQuery.trim().toLowerCase();
 
+    // Filter dulu
     final filtered = _records.where((record) {
       if (query.isEmpty) return true;
       return record.matricNo.toLowerCase().contains(query) ||
@@ -256,6 +287,7 @@ debugPrint('PUT BODY => ${response.body}');
           record.status.toLowerCase().contains(query);
     }).toList();
 
+    // Sort ikut option yang dipilih
     filtered.sort((a, b) {
       switch (_sortOption) {
         case AttendanceSortOption.matricAsc:
@@ -276,6 +308,7 @@ debugPrint('PUT BODY => ${response.body}');
     return filtered;
   }
 
+  /// Return warna text untuk badge status (guna lowercase compare untuk robustness)
   Color _statusTextColor(String status) {
     switch (status.toLowerCase()) {
       case 'present':
@@ -291,6 +324,7 @@ debugPrint('PUT BODY => ${response.body}');
     }
   }
 
+  /// Return warna background pastel untuk badge status
   Color _statusBackgroundColor(String status) {
     switch (status.toLowerCase()) {
       case 'present':
@@ -306,6 +340,8 @@ debugPrint('PUT BODY => ${response.body}');
     }
   }
 
+  /// Tunjuk bottom sheet untuk pilih sort option.
+  /// Option yang sedang aktif ditandakan dengan checkmark.
   Future<void> _showSortSheet() async {
     final selected = await showModalBottomSheet<AttendanceSortOption>(
       context: context,
@@ -330,6 +366,7 @@ debugPrint('PUT BODY => ${response.body}');
                   ),
                 ),
                 const SizedBox(height: 16),
+                // 6 pilihan sort — matric, nama, status (A-Z dan Z-A)
                 _SortTile(
                   title: 'Matric No. (A-Z)',
                   selected: _sortOption == AttendanceSortOption.matricAsc,
@@ -367,6 +404,7 @@ debugPrint('PUT BODY => ${response.body}');
       },
     );
 
+    // Update sort option kalau user pilih sesuatu (bukan dismiss)
     if (selected != null) {
       setState(() {
         _sortOption = selected;
@@ -374,6 +412,8 @@ debugPrint('PUT BODY => ${response.body}');
     }
   }
 
+  /// Tunjuk dialog konfirmasi sebelum delete rekod.
+  /// Panggil _deleteRecord hanya kalau user confirm.
   Future<void> _confirmDelete(AttendanceRecord record) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
@@ -398,7 +438,10 @@ debugPrint('PUT BODY => ${response.body}');
     }
   }
 
+  /// Generate PDF rekod kehadiran dan buka print dialog.
+  /// Guna _filteredRecords supaya PDF konsisten dengan apa yang user tengok di screen.
   Future<void> _handlePrint() async {
+    // Guard: takde data atau sedang print, skip
     if (_records.isEmpty || _isPrinting) return;
 
     setState(() {
@@ -407,11 +450,12 @@ debugPrint('PUT BODY => ${response.body}');
 
     try {
       final pdf = pw.Document();
-      final records = _filteredRecords;
+      final records = _filteredRecords; // Print hanya records yang difilter/disort
 
       pdf.addPage(
         pw.MultiPage(
           build: (context) => [
+            // Header PDF — nama subjek, sesi, dan masa
             pw.Text(
               widget.subjectName,
               style: pw.TextStyle(
@@ -423,6 +467,7 @@ debugPrint('PUT BODY => ${response.body}');
             pw.Text(widget.sessionLabel),
             pw.Text(widget.timeRange),
             pw.SizedBox(height: 16),
+            // Table rekod — matric, nama, status, masa submit
             pw.Table.fromTextArray(
               headers: const ['Matric No', 'Student Name', 'Status', 'Time'],
               data: records
@@ -438,6 +483,7 @@ debugPrint('PUT BODY => ${response.body}');
         ),
       );
 
+      // Convert PDF ke bytes dan buka native print dialog
       final Uint8List bytes = await pdf.save();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
@@ -458,7 +504,7 @@ debugPrint('PUT BODY => ${response.body}');
 
   @override
   Widget build(BuildContext context) {
-    final records = _filteredRecords;
+    final records = _filteredRecords; // Guna filtered+sorted records untuk display
 
     return Theme(
       data: Theme.of(context).copyWith(
@@ -471,7 +517,7 @@ debugPrint('PUT BODY => ${response.body}');
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
-            // ✅ FIX: pass true bila balik supaya AttendancePage tahu nak refresh
+            // Pass true bila balik supaya AttendancePage tahu nak refresh submissions
             onPressed: () => Navigator.of(context).pop(true),
           ),
           titleSpacing: 0,
@@ -506,6 +552,7 @@ debugPrint('PUT BODY => ${response.body}');
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Nama subjek
                       Text(
                         widget.subjectName,
                         style: const TextStyle(
@@ -515,6 +562,7 @@ debugPrint('PUT BODY => ${response.body}');
                         ),
                       ),
                       const SizedBox(height: 6),
+                      // Label sesi, contoh: "Lecture Session - Saturday, 14 June 2026"
                       Text(
                         widget.sessionLabel,
                         style: const TextStyle(
@@ -523,6 +571,7 @@ debugPrint('PUT BODY => ${response.body}');
                         ),
                       ),
                       const SizedBox(height: 6),
+                      // Masa sesi
                       Text(
                         widget.timeRange,
                         style: const TextStyle(
@@ -532,8 +581,11 @@ debugPrint('PUT BODY => ${response.body}');
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // ── Search bar + Sort + Print buttons ──
                       Row(
                         children: [
+                          // Search field — filter records secara realtime
                           Expanded(
                             child: Container(
                               height: 44,
@@ -546,7 +598,7 @@ debugPrint('PUT BODY => ${response.body}');
                                 controller: _searchController,
                                 onChanged: (value) {
                                   setState(() {
-                                    _searchQuery = value;
+                                    _searchQuery = value; // Trigger _filteredRecords getter
                                   });
                                 },
                                 decoration: const InputDecoration(
@@ -571,11 +623,13 @@ debugPrint('PUT BODY => ${response.body}');
                             ),
                           ),
                           const SizedBox(width: 10),
+                          // Butang sort — buka bottom sheet pilihan sort
                           _ActionIconButton(
                             icon: Icons.sort_rounded,
                             onTap: _showSortSheet,
                           ),
                           const SizedBox(width: 8),
+                          // Butang print — generate dan buka PDF
                           _ActionIconButton(
                             icon: Icons.print_outlined,
                             onTap: _handlePrint,
@@ -583,6 +637,8 @@ debugPrint('PUT BODY => ${response.body}');
                         ],
                       ),
                       const SizedBox(height: 18),
+
+                      // ── Table rekod kehadiran ──
                       Container(
                         decoration: BoxDecoration(
                           color: const Color(0xFFFDFDFE),
@@ -591,6 +647,7 @@ debugPrint('PUT BODY => ${response.body}');
                         ),
                         child: Column(
                           children: [
+                            // Header table
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               decoration: const BoxDecoration(
@@ -653,12 +710,12 @@ debugPrint('PUT BODY => ${response.body}');
                                 ],
                               ),
                             ),
+
+                            // State: loading, kosong, atau populate rows
                             if (_isLoading)
                               const Padding(
                                 padding: EdgeInsets.all(24),
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
+                                child: Center(child: CircularProgressIndicator()),
                               )
                             else if (records.isEmpty)
                               const Padding(
@@ -679,6 +736,7 @@ debugPrint('PUT BODY => ${response.body}');
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                                   decoration: BoxDecoration(
                                     border: Border(
+                                      // Row pertama takde top border — elak double border
                                       top: BorderSide(
                                         color: index == 0
                                             ? Colors.transparent
@@ -688,6 +746,7 @@ debugPrint('PUT BODY => ${response.body}');
                                   ),
                                   child: Row(
                                     children: [
+                                      // Nombor matric
                                       Expanded(
                                         flex: 3,
                                         child: Text(
@@ -698,6 +757,7 @@ debugPrint('PUT BODY => ${response.body}');
                                           ),
                                         ),
                                       ),
+                                      // Nama pelajar — max 2 baris, truncate kalau panjang
                                       Expanded(
                                         flex: 3,
                                         child: Padding(
@@ -714,6 +774,7 @@ debugPrint('PUT BODY => ${response.body}');
                                           ),
                                         ),
                                       ),
+                                      // Badge status berwarna
                                       Expanded(
                                         flex: 3,
                                         child: Center(
@@ -735,6 +796,7 @@ debugPrint('PUT BODY => ${response.body}');
                                           ),
                                         ),
                                       ),
+                                      // Butang Edit dan Delete
                                       Expanded(
                                         flex: 2,
                                         child: Column(
@@ -742,13 +804,13 @@ debugPrint('PUT BODY => ${response.body}');
                                           children: [
                                             _MiniActionButton(
                                               label: 'Edit',
-                                              backgroundColor: const Color(0xFF14B85A),
+                                              backgroundColor: const Color(0xFF14B85A), // Hijau
                                               onTap: () => _editRecord(record),
                                             ),
                                             const SizedBox(height: 8),
                                             _MiniActionButton(
                                               label: 'Delete',
-                                              backgroundColor: const Color(0xFFF44336),
+                                              backgroundColor: const Color(0xFFF44336), // Merah
                                               onTap: () => _confirmDelete(record),
                                             ),
                                           ],
@@ -773,6 +835,7 @@ debugPrint('PUT BODY => ${response.body}');
   }
 }
 
+/// Icon button bulat untuk toolbar — dipakai untuk Sort dan Print
 class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -804,6 +867,7 @@ class _ActionIconButton extends StatelessWidget {
   }
 }
 
+/// Butang kecil dalam kolum ACTION table — Edit (hijau) dan Delete (merah)
 class _MiniActionButton extends StatelessWidget {
   final String label;
   final Color backgroundColor;
@@ -842,9 +906,10 @@ class _MiniActionButton extends StatelessWidget {
   }
 }
 
+/// Tile dalam sort bottom sheet — tunjuk checkmark kalau option ni yang aktif
 class _SortTile extends StatelessWidget {
   final String title;
-  final bool selected;
+  final bool selected;  // True = option ni sedang dipilih
   final VoidCallback onTap;
 
   const _SortTile({
@@ -873,6 +938,7 @@ class _SortTile extends StatelessWidget {
                   ),
                 ),
               ),
+              // Checkmark hanya dipapar untuk option yang sedang aktif
               if (selected)
                 const Icon(
                   Icons.check_circle,
