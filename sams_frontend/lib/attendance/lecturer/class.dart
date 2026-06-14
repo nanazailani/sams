@@ -14,11 +14,15 @@ class ClassPage extends StatefulWidget {
 }
 
 class _ClassPageState extends State<ClassPage> {
-  List<Map<String, String>> courses = [];
-  List<Map<String, String>> modules = [];
+  List<Map<String, String>> courses = [];   // Senarai subjek unik yang diajar
+  List<Map<String, String>> modules = [];   // Senarai module unik yang diajar
   bool isLoading = true;
-  int lecturerId = 0;
+  int lecturerId = 0;                        // ID lecturer dari SharedPreferences
+
+  // Semua sesi gabungan (course + module) — untuk reference kalau perlu
   List<Map<String, String>> allClassSessions = [];
+
+  // Map untuk group sesi ikut kod kursus — key: "BCS1234", value: list of sessions
   Map<String, List<Map<String, String>>> courseSessionsMap = {};
   Map<String, List<Map<String, String>>> moduleSessionsMap = {};
 
@@ -28,6 +32,8 @@ class _ClassPageState extends State<ClassPage> {
     loadSessionAndFetch();
   }
 
+  /// Logout — clear semua SharedPreferences dan redirect ke LoginPage.
+  /// pushAndRemoveUntil supaya user tak boleh back ke ClassPage selepas logout.
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
@@ -35,15 +41,18 @@ class _ClassPageState extends State<ClassPage> {
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const LoginPage()),
-      (route) => false,
+      (route) => false, // Buang semua route sebelum ni
     );
   }
 
+  /// Load lecturer ID dari SharedPreferences, kemudian fetch kelas.
+  /// Guna lecturer_id kalau ada, fallback ke user_id kalau lecturer_id takde.
   Future<void> loadSessionAndFetch() async {
     final prefs = await SharedPreferences.getInstance();
     final savedLecturerId = prefs.getInt('lecturer_id');
     final savedUserId = prefs.getInt('user_id');
 
+    // Prioriti: lecturer_id → user_id → 0 (takde session)
     final resolvedLecturerId = savedLecturerId ?? savedUserId ?? 0;
 
     debugPrint('=== PREFS CHECK ===');
@@ -60,9 +69,13 @@ class _ClassPageState extends State<ClassPage> {
     await fetchClasses(overrideLecturerId: resolvedLecturerId);
   }
 
+  /// Fetch semua kelas (course + module) untuk lecturer dari API.
+  /// [overrideLecturerId] dipakai pada first load sebab lecturerId state
+  /// mungkin belum update lagi masa function ni dipanggil.
   Future<void> fetchClasses({int? overrideLecturerId}) async {
     final idToUse = overrideLecturerId ?? lecturerId;
 
+    // Kalau ID tak valid, reset semua dan stop
     if (idToUse == 0) {
       setState(() {
         isLoading = false;
@@ -89,10 +102,15 @@ class _ClassPageState extends State<ClassPage> {
         debugPrint('Lecturer classes API success: ${response.body}');
         final List data = json.decode(response.body);
 
+        // Temp lists untuk kumpul sesi sebelum setState
         final List<Map<String, String>> courseSessionData = [];
         final List<Map<String, String>> moduleSessionData = [];
+
+        // Map untuk deduplicate — key: "code|name" supaya takde duplicate card
         final Map<String, Map<String, String>> uniqueCourses = {};
         final Map<String, Map<String, String>> uniqueModules = {};
+
+        // Map untuk group sesi ikut kod — untuk bottom sheet list
         final Map<String, List<Map<String, String>>> groupedCourseSessions = {};
         final Map<String, List<Map<String, String>>> groupedModuleSessions = {};
 
@@ -104,6 +122,7 @@ class _ClassPageState extends State<ClassPage> {
               item['attendance_type']?.toString().toLowerCase() ?? '';
           final bool isModuleItem = attendanceType == 'module';
 
+          // Pilih code dan name ikut jenis item
           final String code = isModuleItem
               ? (item['module_code']?.toString() ?? '')
               : (item['subject_code']?.toString() ?? '');
@@ -112,6 +131,7 @@ class _ClassPageState extends State<ClassPage> {
               : (item['subject_name']?.toString() ?? '');
           final String sessionId = item['id']?.toString() ?? '';
 
+          // Normalize semua data jadi Map<String, String> yang seragam
           final sessionMap = {
             'id': sessionId,
             'code': code,
@@ -127,11 +147,12 @@ class _ClassPageState extends State<ClassPage> {
           };
 
           if (isModuleItem) {
-            // Skip placeholder sessions (id is null)
+            // Skip placeholder module sessions (API return row tanpa session ID)
             if (sessionId.isEmpty) continue;
 
             moduleSessionData.add(sessionMap);
 
+            // Deduplicate module — guna "code|name" sebagai unique key
             final key = '$code|$name';
             uniqueModules.putIfAbsent(
               key,
@@ -143,10 +164,12 @@ class _ClassPageState extends State<ClassPage> {
               },
             );
 
+            // Group sesi ikut kod yang dinormalize (uppercase, trim)
             final normalizedCode = code.trim().toUpperCase();
             groupedModuleSessions.putIfAbsent(normalizedCode, () => []);
             groupedModuleSessions[normalizedCode]!.add(sessionMap);
           } else {
+            // Deduplicate course — sama macam module
             final key = '$code|$name';
             uniqueCourses.putIfAbsent(
               key,
@@ -158,7 +181,8 @@ class _ClassPageState extends State<ClassPage> {
               },
             );
 
-            // Only add to sessions if it has a real session (not placeholder)
+            // Course boleh ada placeholder (subjek tanpa sesi lagi) —
+            // subjek still dipaparkan tapi takde dalam sessions list
             if (sessionId.isNotEmpty) {
               courseSessionData.add(sessionMap);
               final normalizedCode = code.trim().toUpperCase();
@@ -181,6 +205,7 @@ class _ClassPageState extends State<ClassPage> {
         });
       } else {
         debugPrint('Lecturer classes API failed: ${response.statusCode}');
+        // Reset state kalau API gagal — tunjuk empty state
         setState(() {
           courses = [];
           modules = [];
@@ -191,6 +216,7 @@ class _ClassPageState extends State<ClassPage> {
       }
     } catch (e) {
       debugPrint('Error fetching lecturer classes: $e');
+      // Sama — reset state kalau ada network error
       setState(() {
         courses = [];
         modules = [];
@@ -201,9 +227,13 @@ class _ClassPageState extends State<ClassPage> {
     }
   }
 
+  /// Tunjuk bottom sheet dengan senarai sesi kelas untuk kursus/module yang dipilih.
+  /// Tap pada sesi akan navigate ke AttendancePage untuk sesi tersebut.
   void _showCourseSessions(Map<String, String> course) {
     final selectedCode = (course['code'] ?? '').trim().toUpperCase();
     final attendanceType = course['attendance_type'] ?? 'course';
+
+    // Ambil sesi dari map yang betul ikut attendance type
     final sessions = List<Map<String, String>>.from(
       attendanceType == 'module'
           ? (moduleSessionsMap[selectedCode] ?? <Map<String, String>>[])
@@ -222,11 +252,12 @@ class _ClassPageState extends State<ClassPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
+        // DraggableScrollableSheet untuk bottom sheet yang boleh drag naik/turun
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.5,
-          maxChildSize: 0.9,
-          minChildSize: 0.3,
+          initialChildSize: 0.5,  // Default 50% screen
+          maxChildSize: 0.9,       // Max 90% screen
+          minChildSize: 0.3,       // Min 30% screen
           builder: (context, scrollController) {
             return SafeArea(
               child: Padding(
@@ -234,7 +265,7 @@ class _ClassPageState extends State<ClassPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Handle bar
+                    // Drag handle indicator
                     Center(
                       child: Container(
                         width: 40,
@@ -246,6 +277,7 @@ class _ClassPageState extends State<ClassPage> {
                         ),
                       ),
                     ),
+                    // Header — nama subjek/module
                     Text(
                       '${course['code'] ?? ''} ${course['name'] ?? ''}',
                       style: const TextStyle(
@@ -256,6 +288,7 @@ class _ClassPageState extends State<ClassPage> {
                     const SizedBox(height: 14),
                     Expanded(
                       child: sessions.isEmpty
+                          // Empty state — subjek ada tapi belum ada sesi
                           ? const Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -277,6 +310,7 @@ class _ClassPageState extends State<ClassPage> {
                                 ],
                               ),
                             )
+                          // List sesi kelas yang boleh di-scroll
                           : ListView.builder(
                               controller: scrollController,
                               itemCount: sessions.length,
@@ -292,6 +326,7 @@ class _ClassPageState extends State<ClassPage> {
                                     contentPadding:
                                         const EdgeInsets.symmetric(
                                             horizontal: 16, vertical: 10),
+                                    // Tarikh sesi sebagai title
                                     title: Text(
                                       _formatDisplayDate(
                                           session['class_date'] ?? '-'),
@@ -307,6 +342,7 @@ class _ClassPageState extends State<ClassPage> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
+                                          // Label sesi, contoh: "Lecture Session • Week 3"
                                           Text(
                                             _buildSessionLabel(session),
                                             style: const TextStyle(
@@ -316,6 +352,7 @@ class _ClassPageState extends State<ClassPage> {
                                             ),
                                           ),
                                           const SizedBox(height: 4),
+                                          // Masa mula - masa tamat
                                           Text(
                                             _formatTimeRange(
                                               session['start_time'] ?? '-',
@@ -333,17 +370,20 @@ class _ClassPageState extends State<ClassPage> {
                                         Icons.arrow_forward_ios,
                                         size: 16),
                                     onTap: () {
+                                      // Resolve subject ID yang betul ikut attendance type
                                       final subjectId = int.tryParse(
                                               session['subject_id'] ?? '') ??
                                           0;
                                       final moduleId = int.tryParse(
                                               session['module_id'] ?? '') ??
                                           0;
+                                      // Module guna module_id, course guna subject_id
                                       final resolvedSubjectId =
                                           attendanceType == 'module'
                                               ? moduleId
                                               : subjectId;
 
+                                      // Tutup bottom sheet dulu, pastu navigate
                                       Navigator.pop(context);
                                       Navigator.push(
                                         this.context,
@@ -385,6 +425,7 @@ class _ClassPageState extends State<ClassPage> {
     );
   }
 
+  /// Format tarikh dari "2026-06-14" ke "14 Jun 2026" untuk display dalam list
   String _formatDisplayDate(String rawDate) {
     if (rawDate.isEmpty || rawDate == '-') return '-';
     try {
@@ -395,10 +436,11 @@ class _ClassPageState extends State<ClassPage> {
       ];
       return '${date.day} ${months[date.month - 1]} ${date.year}';
     } catch (_) {
-      return rawDate;
+      return rawDate; // Fallback kalau parse gagal
     }
   }
 
+  /// Format masa dari "08:00:00" ke "8:00 AM" (12-jam format)
   String _formatTimeValue(String rawTime) {
     if (rawTime.isEmpty || rawTime == '-') return '-';
     try {
@@ -407,7 +449,7 @@ class _ClassPageState extends State<ClassPage> {
       final hour = int.tryParse(parts[0]) ?? 0;
       final minute = int.tryParse(parts[1]) ?? 0;
       final suffix = hour >= 12 ? 'PM' : 'AM';
-      final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+      final displayHour = hour % 12 == 0 ? 12 : hour % 12; // 0 → 12
       final displayMinute = minute.toString().padLeft(2, '0');
       return '$displayHour:$displayMinute $suffix';
     } catch (_) {
@@ -415,18 +457,25 @@ class _ClassPageState extends State<ClassPage> {
     }
   }
 
+  /// Gabungkan start dan end time jadi "8:00 AM - 10:00 AM"
   String _formatTimeRange(String startTime, String endTime) {
     return '${_formatTimeValue(startTime)} - ${_formatTimeValue(endTime)}';
   }
 
+  /// Bina label sesi untuk display, contoh: "Lecture Session • Week 3"
+  /// Kalau takde session_type, guna default berdasarkan attendance type.
   String _buildSessionLabel(Map<String, String> session) {
     final rawType = (session['session_type'] ?? '').trim();
     final rawWeek = (session['week_number'] ?? '').trim();
+
+    // Capitalize first letter, lowercase the rest: "LECTURE" → "Lecture Session"
     final sessionType = rawType.isEmpty
         ? (session['attendance_type'] == 'module'
             ? 'Module Session'
             : 'Session')
         : '${rawType[0].toUpperCase()}${rawType.substring(1).toLowerCase()} Session';
+
+    // Kalau takde week number, return type sahaja
     if (rawWeek.isEmpty) return sessionType;
     return '$sessionType • Week $rawWeek';
   }
@@ -440,6 +489,7 @@ class _ClassPageState extends State<ClassPage> {
       body: SafeArea(
         child: Column(
           children: [
+            // Custom app bar — ada butang logout kat kanan
             Container(
               width: double.infinity,
               padding:
@@ -470,18 +520,22 @@ class _ClassPageState extends State<ClassPage> {
             ),
             Expanded(
               child: RefreshIndicator(
+                // Pull-to-refresh akan trigger fetchClasses semula
                 onRefresh: fetchClasses,
                 child: isLoading
+                    // Loading state — tunjuk spinner
                     ? const Center(child: CircularProgressIndicator())
                     : hasAssignments
+                        // Ada data — tunjuk table course dan/atau module
                         ? SingleChildScrollView(
                             physics:
-                                const AlwaysScrollableScrollPhysics(),
+                                const AlwaysScrollableScrollPhysics(), // Wajib untuk RefreshIndicator
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment:
                                   CrossAxisAlignment.start,
                               children: [
+                                // Section Course — hanya papar kalau ada
                                 if (courses.isNotEmpty) ...[
                                   const Text(
                                     'Course',
@@ -497,10 +551,11 @@ class _ClassPageState extends State<ClassPage> {
                                     actionTitle: 'ACTION',
                                     data: courses,
                                     viewLabel: 'View Course',
-                                    isCourse: true,
+                                    isCourse: true, // Course ada butang "Add Session"
                                   ),
                                   const SizedBox(height: 24),
                                 ],
+                                // Section Module — hanya papar kalau ada
                                 if (modules.isNotEmpty) ...[
                                   const Text(
                                     'Module',
@@ -516,15 +571,16 @@ class _ClassPageState extends State<ClassPage> {
                                     actionTitle: 'ACTION',
                                     data: modules,
                                     viewLabel: 'View Module',
-                                    isCourse: false,
+                                    isCourse: false, // Module takde butang "Add Session"
                                   ),
                                 ],
                               ],
                             ),
                           )
+                        // Empty state — lecturer belum ada assignment
                         : ListView(
                             physics:
-                                const AlwaysScrollableScrollPhysics(),
+                                const AlwaysScrollableScrollPhysics(), // Wajib untuk RefreshIndicator
                             children: const [
                               SizedBox(height: 120),
                               Icon(
@@ -568,6 +624,9 @@ class _ClassPageState extends State<ClassPage> {
     );
   }
 
+  /// Bina table card untuk senarai course atau module.
+  /// [isCourse] menentukan sama ada butang "Add Session" dipaparkan —
+  /// hanya course boleh tambah sesi, module sesi diurus dari sistem lain.
   Widget _buildListCard({
     required String titleOne,
     required String titleTwo,
@@ -583,6 +642,7 @@ class _ClassPageState extends State<ClassPage> {
       ),
       child: Column(
         children: [
+          // Header row untuk column titles
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
             child: Row(
@@ -617,6 +677,7 @@ class _ClassPageState extends State<ClassPage> {
           ),
           const Divider(
               height: 1, thickness: 1, color: Color(0xFF3C3C3C)),
+          // Generate rows untuk setiap item
           ...List.generate(data.length, (index) {
             final item = data[index];
             return Column(
@@ -627,6 +688,7 @@ class _ClassPageState extends State<ClassPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // Kod kursus/module
                       Expanded(
                         flex: 2,
                         child: Text(
@@ -636,6 +698,7 @@ class _ClassPageState extends State<ClassPage> {
                               fontWeight: FontWeight.w500),
                         ),
                       ),
+                      // Nama kursus/module
                       Expanded(
                         flex: 4,
                         child: Text(
@@ -646,22 +709,26 @@ class _ClassPageState extends State<ClassPage> {
                               fontWeight: FontWeight.w500),
                         ),
                       ),
+                      // Kolum butang tindakan
                       Expanded(
                         flex: 2,
                         child: Column(
                           children: [
+                            // "View Course" / "View Module" — placeholder, belum ada action
                             _buildActionButton(viewLabel),
                             const SizedBox(height: 8),
+                            // "Attendance" — buka bottom sheet senarai sesi
                             _buildActionButton(
                               'Attendance',
                               onPressed: () =>
                                   _showCourseSessions(item),
                             ),
+                            // "Add Session" — hanya untuk course, bukan module
                             if (isCourse) ...[
                               const SizedBox(height: 8),
                               _buildActionButton(
                                 'Add Session',
-                                color: const Color(0xFF1A8C5B),
+                                color: const Color(0xFF1A8C5B), // Hijau untuk distinguish
                                 onPressed: () async {
                                   final result = await Navigator.push(
                                     context,
@@ -678,6 +745,7 @@ class _ClassPageState extends State<ClassPage> {
                                       ),
                                     ),
                                   );
+                                  // Refresh list kalau sesi berjaya ditambah
                                   if (result == true) fetchClasses();
                                 },
                               ),
@@ -688,6 +756,7 @@ class _ClassPageState extends State<ClassPage> {
                     ],
                   ),
                 ),
+                // Divider antara rows — kecuali row terakhir
                 if (index != data.length - 1)
                   const Divider(
                     height: 1,
@@ -704,13 +773,15 @@ class _ClassPageState extends State<ClassPage> {
     );
   }
 
+  /// Reusable action button — kecil dan seragam untuk semua butang dalam table.
+  /// [color] optional — default biru, boleh override (e.g. hijau untuk Add Session).
   Widget _buildActionButton(String label,
       {VoidCallback? onPressed, Color? color}) {
     return SizedBox(
       width: 92,
       height: 30,
       child: ElevatedButton(
-        onPressed: onPressed ?? () {},
+        onPressed: onPressed ?? () {}, // Fallback ke no-op kalau takde handler
         style: ElevatedButton.styleFrom(
           backgroundColor: color ?? const Color(0xFF2E4E96),
           foregroundColor: Colors.white,
