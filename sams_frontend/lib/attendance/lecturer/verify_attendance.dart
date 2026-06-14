@@ -3,13 +3,14 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class VerifyAttendancePage extends StatefulWidget {
+  // Data sesi yang dipassing dari AttendancePage
   final int classSessionId;
   final String subjectCode;
   final String subjectName;
   final String classDate;
   final String startTime;
   final String endTime;
-  final String attendanceType;
+  final String attendanceType; // 'course' atau 'module'
 
   const VerifyAttendancePage({
     super.key,
@@ -27,7 +28,7 @@ class VerifyAttendancePage extends StatefulWidget {
 }
 
 class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
-  List<Map<String, String>> submissions = [];
+  List<Map<String, String>> submissions = []; // Senarai submission pelajar
   bool isLoading = true;
 
   @override
@@ -36,6 +37,8 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
     fetchSubmissions();
   }
 
+  /// Fetch senarai submission kehadiran untuk sesi ni.
+  /// Dipanggil semula bila user pull-to-refresh.
   Future<void> fetchSubmissions() async {
     setState(() {
       isLoading = true;
@@ -45,7 +48,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
       final response = await http
           .get(
             Uri.parse(
-              //'http://127.0.0.1:8000/api/attendance/${widget.classSessionId}/submissions',
+              // URL production — guna ?type= untuk distinguish course vs module
               'https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/${widget.classSessionId}/submissions?type=${widget.attendanceType}',
             ),
           )
@@ -54,6 +57,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
         setState(() {
+          // Map response ke format seragam, termasuk location dan verification_status
           submissions = data
               .map<Map<String, String>>(
                 (item) => {
@@ -70,8 +74,9 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
         });
       }
     } catch (_) {
-      //
+      // Silent fail — list akan kekal kosong, user boleh pull-to-refresh
     } finally {
+      // Matikan loading walaupun ada error
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -80,20 +85,21 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
     }
   }
 
+  /// Hantar request ke API untuk approve atau reject submission kehadiran.
+  /// Selepas berjaya, update local list terus tanpa fetch semula (optimistic update).
   Future<void> updateAttendanceStatus(String attendanceId, String status) async {
     try {
       final response = await http.post(
-        //Uri.parse('http://127.0.0.1:8000/api/attendance/$attendanceId/status'),
         Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/$attendanceId/status'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'status': status,
-          'attendance_type': widget.attendanceType,
+          'status': status,                          // 'Approved' atau 'Rejected'
+          'attendance_type': widget.attendanceType,  // Untuk API tahu table mana nak update
         }),
       );
 
       if (response.statusCode == 200) {
-        // Update the local submissions list immediately
+        // Optimistic update — tukar status dalam local list tanpa fetch semula dari API
         setState(() {
           final index = submissions.indexWhere((item) => item['id'] == attendanceId);
           if (index != -1) {
@@ -105,6 +111,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Attendance $status successfully.'),
+              // Hijau untuk Approved, merah untuk Rejected
               backgroundColor: status == 'Approved' ? Colors.green : Colors.red,
             ),
           );
@@ -131,6 +138,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
     }
   }
 
+  /// Return warna text untuk badge status attendance
   Color _statusTextColor(String status) {
     switch (status) {
       case 'Present':
@@ -146,6 +154,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
     }
   }
 
+  /// Return warna background untuk badge status attendance
   Color _statusBackgroundColor(String status) {
     switch (status) {
       case 'Present':
@@ -161,39 +170,25 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
     }
   }
 
+  /// Format tarikh dari "2026-06-14" ke "Saturday, 14 June 2026"
   String _formatClassDate(String value) {
     if (value.isEmpty) return '-';
     try {
       final date = DateTime.parse(value);
       const weekdays = [
-        'Monday',
-        'Tuesday',
-        'Wednesday',
-        'Thursday',
-        'Friday',
-        'Saturday',
-        'Sunday',
+        'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
       ];
       const months = [
-        'January',
-        'February',
-        'March',
-        'April',
-        'May',
-        'June',
-        'July',
-        'August',
-        'September',
-        'October',
-        'November',
-        'December',
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
       ];
       return '${weekdays[date.weekday - 1]}, ${date.day} ${months[date.month - 1]} ${date.year}';
     } catch (_) {
-      return value;
+      return value; // Fallback kalau parse gagal
     }
   }
 
+  /// Format masa dari "08:00:00" ke "8:00 am" (12-jam format)
   String _formatTime(String value) {
     if (value.isEmpty) return '-';
     try {
@@ -202,7 +197,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
       final minute = parts.length > 1 ? parts[1] : '00';
       final suffix = hour >= 12 ? 'pm' : 'am';
       hour = hour % 12;
-      if (hour == 0) hour = 12;
+      if (hour == 0) hour = 12; // 0:00 → 12:00 am
       return '$hour:$minute $suffix';
     } catch (_) {
       return value;
@@ -212,6 +207,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
+      // Override font family ke Nunito untuk page ni
       data: Theme.of(context).copyWith(
         textTheme: Theme.of(context).textTheme.apply(fontFamily: 'Nunito'),
       ),
@@ -220,6 +216,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
         body: SafeArea(
           child: Column(
             children: [
+              // Custom app bar berwarna biru SAMS
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
@@ -244,10 +241,12 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
               ),
               Expanded(
                 child: RefreshIndicator(
+                  // Pull-to-refresh trigger fetchSubmissions semula
                   onRefresh: fetchSubmissions,
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
                     children: [
+                      // ── Card info sesi kelas ──
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(18),
@@ -257,6 +256,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                         ),
                         child: Column(
                           children: [
+                            // Nama dan kod subjek
                             Text(
                               '${widget.subjectCode} ${widget.subjectName}',
                               textAlign: TextAlign.center,
@@ -267,11 +267,13 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                               ),
                             ),
                             const SizedBox(height: 8),
+                            // Tarikh kelas dalam format panjang
                             Text(
                               _formatClassDate(widget.classDate),
                               style: const TextStyle(fontSize: 13, color: Colors.black87),
                             ),
                             const SizedBox(height: 6),
+                            // Masa mula - masa tamat
                             Text(
                               '${_formatTime(widget.startTime)} - ${_formatTime(widget.endTime)}',
                               style: const TextStyle(fontSize: 13, color: Colors.black87),
@@ -280,6 +282,8 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // ── Table submission pelajar ──
                       const Text(
                         'Submitted Students',
                         style: TextStyle(
@@ -297,6 +301,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                         ),
                         child: Column(
                           children: [
+                            // Header row table
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                               decoration: const BoxDecoration(
@@ -369,15 +374,15 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                 ],
                               ),
                             ),
+
+                            // State: loading, kosong, atau populate rows
                             if (isLoading)
                               const Padding(
                                 padding: EdgeInsets.all(20),
                                 child: SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               )
                             else if (submissions.isEmpty)
@@ -393,15 +398,20 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                 final item = submissions[index];
                                 final originalStatus = item['status'] ?? '';
                                 final verificationStatus = item['verification_status'] ?? 'Pending';
+
+                                // Map verification status ke display status:
+                                // Rejected → Absent, Pending → Pending, Approved → guna status asal
                                 final status = verificationStatus == 'Rejected'
                                     ? 'Absent'
                                     : (verificationStatus == 'Pending'
                                         ? 'Pending'
                                         : originalStatus);
+
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                   decoration: BoxDecoration(
                                     border: Border(
+                                      // Row pertama takde top border — elak double border dengan header
                                       top: BorderSide(
                                         color: index == 0
                                             ? Colors.transparent
@@ -412,6 +422,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                   ),
                                   child: Row(
                                     children: [
+                                      // Nombor matric pelajar
                                       Expanded(
                                         flex: 2,
                                         child: Text(
@@ -419,6 +430,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                           style: const TextStyle(fontSize: 11, color: Colors.black87),
                                         ),
                                       ),
+                                      // Nama lokasi dari GPS reverse geocoding
                                       Expanded(
                                         flex: 4,
                                         child: Text(
@@ -426,7 +438,8 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                           style: const TextStyle(fontSize: 11, color: Colors.black87),
                                         ),
                                       ),
-                                                                          Expanded(
+                                      // Badge status berwarna
+                                      Expanded(
                                         flex: 2,
                                         child: Center(
                                           child: Container(
@@ -447,15 +460,20 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                           ),
                                         ),
                                       ),
+                                      // Kolum action — Approve/Reject kalau Pending,
+                                      // badge hijau/merah kalau dah diverify
                                       Expanded(
                                         flex: 3,
                                         child: verificationStatus == 'Pending'
+                                            // Tunjuk butang Approve & Reject untuk submission Pending
                                             ? Column(
                                                 children: [
+                                                  // Butang Approve — ada confirmation dialog
                                                   Material(
                                                     color: Colors.transparent,
                                                     child: InkWell(
                                                       onTap: () async {
+                                                        // Tunjuk dialog konfirmasi sebelum approve
                                                         final confirm = await showDialog<bool>(
                                                           context: context,
                                                           builder: (context) => AlertDialog(
@@ -473,6 +491,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                             ],
                                                           ),
                                                         );
+                                                        // Proceed hanya kalau user confirm
                                                         if (confirm == true) {
                                                           final id = item['id'] ?? '';
                                                           if (id.isNotEmpty) {
@@ -485,7 +504,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                         margin: const EdgeInsets.only(bottom: 4),
                                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                                         decoration: BoxDecoration(
-                                                          color: const Color(0xFF4CAF50),
+                                                          color: const Color(0xFF4CAF50), // Hijau
                                                           borderRadius: BorderRadius.circular(16),
                                                         ),
                                                         child: const Text(
@@ -495,10 +514,12 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                       ),
                                                     ),
                                                   ),
+                                                  // Butang Reject — ada confirmation dialog
                                                   Material(
                                                     color: Colors.transparent,
                                                     child: InkWell(
                                                       onTap: () async {
+                                                        // Tunjuk dialog konfirmasi sebelum reject
                                                         final confirm = await showDialog<bool>(
                                                           context: context,
                                                           builder: (context) => AlertDialog(
@@ -516,6 +537,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                             ],
                                                           ),
                                                         );
+                                                        // Proceed hanya kalau user confirm
                                                         if (confirm == true) {
                                                           final id = item['id'] ?? '';
                                                           if (id.isNotEmpty) {
@@ -527,7 +549,7 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                       child: Container(
                                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                                         decoration: BoxDecoration(
-                                                          color: const Color(0xFFE74C3C),
+                                                          color: const Color(0xFFE74C3C), // Merah
                                                           borderRadius: BorderRadius.circular(16),
                                                         ),
                                                         child: const Text(
@@ -539,10 +561,12 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                   ),
                                                 ],
                                               )
+                                            // Dah diverify — tunjuk badge status sahaja (Approved/Rejected)
                                             : Center(
                                                 child: Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                                   decoration: BoxDecoration(
+                                                    // Hijau untuk Approved, merah untuk Rejected
                                                     color: verificationStatus == 'Approved'
                                                         ? const Color(0xFFE6F8EC)
                                                         : const Color(0xFFFFE6E6),
@@ -555,13 +579,13 @@ class _VerifyAttendancePageState extends State<VerifyAttendancePage> {
                                                       fontSize: 10,
                                                       fontWeight: FontWeight.w600,
                                                       color: verificationStatus == 'Approved'
-                                                          ? const Color(0xFF2E7D32)
-                                                          : const Color(0xFFC62828),
+                                                          ? const Color(0xFF2E7D32) // Hijau gelap
+                                                          : const Color(0xFFC62828), // Merah gelap
                                                     ),
                                                   ),
                                                 ),
                                               ),
-                                      )
+                                      ),
                                     ],
                                   ),
                                 );
