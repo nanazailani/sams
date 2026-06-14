@@ -7,6 +7,7 @@ import 'verify_attendance.dart';
 import 'view_attendance.dart';
 
 class AttendancePage extends StatefulWidget {
+  // Data sesi kelas yang dipassing dari page sebelum ni
   final int classSessionId;
   final int subjectId;
   final String subjectCode;
@@ -14,7 +15,7 @@ class AttendancePage extends StatefulWidget {
   final String classDate;
   final String startTime;
   final String endTime;
-  final String attendanceType;
+  final String attendanceType; // 'course' atau 'module'
 
   const AttendancePage({
     super.key,
@@ -33,10 +34,11 @@ class AttendancePage extends StatefulWidget {
 }
 
 class _AttendancePageState extends State<AttendancePage> {
-  String attendanceCode = '';
-  bool isGenerating = false;
-  String expiryText = 'Expires at class end';
+  String attendanceCode = '';     // Kod kehadiran yang aktif (kosong = belum generate)
+  bool isGenerating = false;      // Loading state masa generate/regenerate kod
+  String expiryText = 'Expires at class end'; // Text expiry default
 
+  /// Format tarikh dari "2026-06-14" ke "Saturday, 14 June 2026"
   String _formatClassDate(String value) {
     if (value.isEmpty) return '-';
     try {
@@ -50,10 +52,11 @@ class _AttendancePageState extends State<AttendancePage> {
       ];
       return '${weekdays[date.weekday - 1]}, ${date.day} ${months[date.month - 1]} ${date.year}';
     } catch (_) {
-      return value;
+      return value; // Kalau parse gagal, return string asal
     }
   }
 
+  /// Format masa dari "08:00:00" ke "8:00 am" (12-jam format)
   String _formatTime(String value) {
     if (value.isEmpty) return '-';
     try {
@@ -62,17 +65,18 @@ class _AttendancePageState extends State<AttendancePage> {
       final minute = parts.length > 1 ? parts[1] : '00';
       final suffix = hour >= 12 ? 'pm' : 'am';
       hour = hour % 12;
-      if (hour == 0) hour = 12;
+      if (hour == 0) hour = 12; // 0:00 → 12:00 am
       return '$hour:$minute $suffix';
     } catch (_) {
       return value;
     }
   }
 
+  /// Format expiry timestamp dari API ke "Expires at 10:00 pm"
   String _formatExpiry(String value) {
     if (value.isEmpty) return 'Expires at class end';
     try {
-      final date = DateTime.parse(value).toLocal();
+      final date = DateTime.parse(value).toLocal(); // Convert ke local timezone
       int hour = date.hour;
       final minute = date.minute.toString().padLeft(2, '0');
       final suffix = hour >= 12 ? 'pm' : 'am';
@@ -84,17 +88,20 @@ class _AttendancePageState extends State<AttendancePage> {
     }
   }
 
-  List<Map<String, String>> submissions = [];
+  List<Map<String, String>> submissions = []; // Senarai submission pelajar
   bool isLoadingSubmissions = true;
 
   @override
   void initState() {
     super.initState();
+    // Guna addPostFrameCallback supaya fetch berlaku selepas first frame render
     WidgetsBinding.instance.addPostFrameCallback((_) {
       fetchSubmissions();
     });
   }
 
+  /// Fetch senarai submission attendance pelajar untuk sesi ni dari API.
+  /// Dipanggil semula setiap kali balik dari VerifyAttendancePage atau ViewAttendancePage.
   Future<void> fetchSubmissions() async {
     setState(() {
       isLoadingSubmissions = true;
@@ -112,6 +119,7 @@ class _AttendancePageState extends State<AttendancePage> {
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
         setState(() {
+          // Map setiap item dari API ke format Map<String, String> yang seragam
           submissions = data
               .map<Map<String, String>>((item) => {
                     'name': item['name']?.toString() ?? '-',
@@ -126,6 +134,7 @@ class _AttendancePageState extends State<AttendancePage> {
     } catch (e) {
       debugPrint('FETCH SUBMISSIONS error => $e');
     } finally {
+      // Matikan loading walaupun ada error — jangan biar spinner forever
       if (mounted) {
         setState(() {
           isLoadingSubmissions = false;
@@ -134,6 +143,8 @@ class _AttendancePageState extends State<AttendancePage> {
     }
   }
 
+  /// Generate atau regenerate kod kehadiran dari API.
+  /// Kod ni akan expired bila kelas tamat (ikut server).
   Future<void> _generateCode() async {
     setState(() {
       isGenerating = true;
@@ -145,6 +156,7 @@ class _AttendancePageState extends State<AttendancePage> {
             Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/attendance/generate'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
+              // Hantar key yang berbeza ikut attendance type
               if (widget.attendanceType == 'module')
                 'module_session_id': widget.classSessionId
               else
@@ -154,6 +166,7 @@ class _AttendancePageState extends State<AttendancePage> {
           )
           .timeout(const Duration(seconds: 10));
 
+      // Parse response body — handle kalau body kosong
       final Map<String, dynamic> data = response.body.isNotEmpty
           ? json.decode(response.body) as Map<String, dynamic>
           : {};
@@ -161,12 +174,15 @@ class _AttendancePageState extends State<AttendancePage> {
       if (response.statusCode == 200) {
         setState(() {
           attendanceCode = data['attendance_code']?.toString() ?? '';
+          // Update expiry text dari API atau guna default
           expiryText = data['expires_at'] != null
               ? _formatExpiry(data['expires_at'].toString())
               : 'Expires at class end';
         });
+        // Refresh submissions selepas generate kod baru
         fetchSubmissions();
       } else {
+        // Tunjuk error message dari API kepada user
         final message = data['message']?.toString() ?? 'Failed to generate code.';
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -189,9 +205,13 @@ class _AttendancePageState extends State<AttendancePage> {
     }
   }
 
+  /// Tunjuk bottom sheet dengan QR code yang encode deep link untuk submit attendance.
+  /// Deep link format: attendease://attendance?code=XXX&subject_id=YYY&type=ZZZ
+  /// Pelajar scan QR ni guna app — terus buka page submit attendance.
   void _showQrCodeDialog() {
-    if (attendanceCode.isEmpty) return;
+    if (attendanceCode.isEmpty) return; // Jangan buka kalau kod belum ada
 
+    // Bina deep link dengan kod, subject ID, dan attendance type
     final deepLink =
         'attendease://attendance?code=$attendanceCode'
         '&subject_id=${widget.subjectId}'
@@ -213,6 +233,7 @@ class _AttendancePageState extends State<AttendancePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Drag handle indicator kat atas bottom sheet
               Container(
                 width: 40,
                 height: 4,
@@ -237,6 +258,7 @@ class _AttendancePageState extends State<AttendancePage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
+              // QR code dengan warna biru SAMS
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -266,6 +288,7 @@ class _AttendancePageState extends State<AttendancePage> {
                 ),
               ),
               const SizedBox(height: 20),
+              // Display kod dalam text besar — pelajar boleh taip manual kalau QR tak scan
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 decoration: BoxDecoration(
@@ -290,6 +313,7 @@ class _AttendancePageState extends State<AttendancePage> {
                 ),
               ),
               const SizedBox(height: 12),
+              // Expiry time info
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -328,6 +352,7 @@ class _AttendancePageState extends State<AttendancePage> {
     );
   }
 
+  /// Return warna text untuk badge status — hijau/kuning/merah/kelabu
   Color _statusTextColor(String status) {
     switch (status) {
       case 'Present':
@@ -343,6 +368,7 @@ class _AttendancePageState extends State<AttendancePage> {
     }
   }
 
+  /// Return warna background untuk badge status — pastel ikut status
   Color _statusBackgroundColor(String status) {
     switch (status) {
       case 'Present':
@@ -361,6 +387,7 @@ class _AttendancePageState extends State<AttendancePage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
+      // Override font family ke Nunito untuk page ni
       data: Theme.of(context).copyWith(
         textTheme: Theme.of(context).textTheme.apply(fontFamily: 'Nunito'),
       ),
@@ -369,6 +396,7 @@ class _AttendancePageState extends State<AttendancePage> {
         body: SafeArea(
           child: Column(
             children: [
+              // Custom app bar berwarna biru SAMS
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
@@ -393,6 +421,7 @@ class _AttendancePageState extends State<AttendancePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ── Section: Current Class ──
                       const Text(
                         'Current Class',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87),
@@ -408,6 +437,7 @@ class _AttendancePageState extends State<AttendancePage> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
+                            // Gambar ilustrasi kelas
                             Container(
                               width: 88,
                               height: 88,
@@ -423,6 +453,7 @@ class _AttendancePageState extends State<AttendancePage> {
                             Expanded(
                               child: Column(
                                 children: [
+                                  // Nama dan kod subjek
                                   Text(
                                     '${widget.subjectCode} ${widget.subjectName}',
                                     textAlign: TextAlign.center,
@@ -433,18 +464,21 @@ class _AttendancePageState extends State<AttendancePage> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
+                                  // Tarikh kelas dalam format panjang
                                   Text(
                                     _formatClassDate(widget.classDate),
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(fontSize: 13, color: Colors.black87),
                                   ),
                                   const SizedBox(height: 8),
+                                  // Masa mula - masa tamat
                                   Text(
                                     '${_formatTime(widget.startTime)} - ${_formatTime(widget.endTime)}',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(fontSize: 13, color: Colors.black87),
                                   ),
                                   const SizedBox(height: 14),
+                                  // Butang generate kod — disable semasa loading
                                   SizedBox(
                                     width: 170,
                                     height: 40,
@@ -480,6 +514,8 @@ class _AttendancePageState extends State<AttendancePage> {
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // ── Section: Active Attendance Code ──
                       const Text(
                         'Active Attendance Code',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87),
@@ -500,6 +536,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                 Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.only(top: 10),
+                                    // Tunjuk "------" kalau kod belum dijana
                                     child: Text(
                                       attendanceCode.isEmpty ? '------' : attendanceCode,
                                       style: const TextStyle(
@@ -514,6 +551,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                 const SizedBox(width: 14),
                                 Column(
                                   children: [
+                                    // Butang Regenerate — disabled kalau belum ada kod
                                     SizedBox(
                                       width: 118,
                                       height: 34,
@@ -535,6 +573,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                       ),
                                     ),
                                     const SizedBox(height: 10),
+                                    // Butang Share QR — disabled kalau belum ada kod
                                     SizedBox(
                                       width: 118,
                                       height: 34,
@@ -560,6 +599,7 @@ class _AttendancePageState extends State<AttendancePage> {
                               ],
                             ),
                             const SizedBox(height: 12),
+                            // Tunjuk masa expiry kod
                             Row(
                               children: [
                                 const Icon(Icons.access_time, size: 16, color: Colors.black54),
@@ -574,11 +614,13 @@ class _AttendancePageState extends State<AttendancePage> {
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // ── Section: Feature Cards (Verify + View History) ──
                       Row(
                         children: [
                           Expanded(
                             child: GestureDetector(
-                              // ✅ FIX 1: await navigation then refresh
+                              // FIX: await navigation supaya submissions refresh bila balik
                               onTap: () async {
                                 await Navigator.push(
                                   context,
@@ -594,7 +636,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                     ),
                                   ),
                                 );
-                                fetchSubmissions(); // ← runs after returning
+                                fetchSubmissions(); // Refresh selepas balik dari verify page
                               },
                               child: _buildFeatureCard(
                                 icon: Icons.verified_user_outlined,
@@ -605,7 +647,7 @@ class _AttendancePageState extends State<AttendancePage> {
                           const SizedBox(width: 14),
                           Expanded(
                             child: GestureDetector(
-                              // ✅ FIX 3: await navigation then refresh (sync with View Record History edits/deletes)
+                              // FIX: await navigation supaya submissions sync dengan edits/deletes dari history
                               onTap: () async {
                                 await Navigator.push(
                                   context,
@@ -621,7 +663,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                     ),
                                   ),
                                 );
-                                fetchSubmissions(); // ← runs after returning
+                                fetchSubmissions(); // Refresh selepas balik dari view history
                               },
                               child: _buildFeatureCard(
                                 icon: Icons.assignment_outlined,
@@ -632,6 +674,8 @@ class _AttendancePageState extends State<AttendancePage> {
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      // ── Section: Current Class Submission Table ──
                       Row(
                         children: [
                           const Expanded(
@@ -644,6 +688,7 @@ class _AttendancePageState extends State<AttendancePage> {
                               ),
                             ),
                           ),
+                          // Filter icon — placeholder, belum ada functionality lagi
                           IconButton(
                             onPressed: () {},
                             icon: const Icon(Icons.filter_alt_outlined, color: Colors.black87),
@@ -661,6 +706,7 @@ class _AttendancePageState extends State<AttendancePage> {
                         ),
                         child: Column(
                           children: [
+                            // Header row untuk table
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                               decoration: const BoxDecoration(
@@ -730,6 +776,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                 ],
                               ),
                             ),
+                            // State: loading, empty, atau populate data
                             if (isLoadingSubmissions)
                               const Padding(
                                 padding: EdgeInsets.all(20),
@@ -749,7 +796,11 @@ class _AttendancePageState extends State<AttendancePage> {
                                 final originalStatus = item['status'] ?? '';
                                 final verificationStatus = item['verification_status'] ?? 'Pending';
                                 final verificationStatusNorm = verificationStatus.toLowerCase();
-                                // ✅ FIX 2: approved → original status (Present/Late), rejected → Absent, pending → Pending
+
+                                // Logic display status:
+                                // rejected → Absent (dikira tidak hadir)
+                                // approved → guna status asal (Present/Late)
+                                // pending  → Pending (belum disahkan lecturer)
                                 final status = verificationStatusNorm == 'rejected'
                                     ? 'Absent'
                                     : (verificationStatusNorm == 'approved'
@@ -757,10 +808,12 @@ class _AttendancePageState extends State<AttendancePage> {
                                         : (verificationStatusNorm == 'pending'
                                             ? 'Pending'
                                             : originalStatus));
+
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                   decoration: BoxDecoration(
                                     border: Border(
+                                      // Baris pertama takde top border — elak double border dengan header
                                       top: BorderSide(
                                         color: index == 0
                                             ? Colors.transparent
@@ -771,6 +824,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                   ),
                                   child: Row(
                                     children: [
+                                      // Nama pelajar — truncate kalau panjang
                                       Expanded(
                                         flex: 4,
                                         child: Padding(
@@ -784,6 +838,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                           ),
                                         ),
                                       ),
+                                      // Nombor matric
                                       Expanded(
                                         flex: 2,
                                         child: Text(
@@ -792,6 +847,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                               fontSize: 11.5, color: Colors.black87),
                                         ),
                                       ),
+                                      // Masa submit
                                       Expanded(
                                         flex: 2,
                                         child: Text(
@@ -800,6 +856,7 @@ class _AttendancePageState extends State<AttendancePage> {
                                               fontSize: 11.5, color: Colors.black87),
                                         ),
                                       ),
+                                      // Badge status berwarna ikut jenis status
                                       Expanded(
                                         flex: 2,
                                         child: Center(
@@ -839,6 +896,7 @@ class _AttendancePageState extends State<AttendancePage> {
     );
   }
 
+  /// Reusable feature card — dipakai untuk Verify Attendance dan View Record History
   Widget _buildFeatureCard({required IconData icon, required String label}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
