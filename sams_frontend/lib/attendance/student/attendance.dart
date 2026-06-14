@@ -11,7 +11,7 @@ class StudentAttendancePage extends StatefulWidget {
   final String subjectCode;
   final String subjectName;
   final String attendanceType;
-  // Optional: pre-filled code from QR scan deep link
+  // Kod yang di-pre-fill dari QR scan deep link (optional)
   final String? initialCode;
 
   const StudentAttendancePage({
@@ -30,17 +30,19 @@ class StudentAttendancePage extends StatefulWidget {
 
 class _StudentAttendancePageState extends State<StudentAttendancePage> {
   bool isLoading = true;
-  int? sessionStudentId;
-  int? savedUserId;
+  int? sessionStudentId; // ID yang berjaya fetch data — boleh berbeza dari widget.studentId
+  int? savedUserId;      // Fallback ID dari SharedPreferences
   final TextEditingController codeController = TextEditingController();
   bool isSubmitting = false;
   bool isGpsVerified = false;
   String gpsStatusText = 'GPS permission not granted';
 
+  // Data profil pelajar
   String studentName = '-';
   String matricNumber = '-';
   String programme = '-';
 
+  // Statistik kehadiran
   int presentCount = 0;
   int lateCount = 0;
   int absentCount = 0;
@@ -48,18 +50,22 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
   int totalClasses = 0;
   String attendanceRate = '0%';
 
+  // Info sesi semasa yang aktif
   String currentSessionTitle = '-';
   String currentSessionDate = '-';
   String currentSessionTime = '-';
-  String activeCode = '-';
+  String activeCode = '-'; // Kod aktif dari server (untuk reference)
 
-  List<Map<String, String>> recentRecords = [];
+  List<Map<String, String>> recentRecords = []; // 10 rekod kehadiran terkini
 
+  /// Normalize attendance type — pastikan hanya 'module' atau 'course' yang dihantar ke API
   String get _normalizedAttendanceType {
     final type = widget.attendanceType.trim().toLowerCase();
     return type == 'module' ? 'module' : 'course';
   }
 
+  /// Semak sama ada response API ada data bermakna atau sekadar placeholder kosong.
+  /// Digunakan dalam loop candidateIds untuk skip ID yang return data kosong.
   bool _hasMeaningfulAttendanceData(Map<String, dynamic> data) {
     final studentNameValue = (data['student_name'] ?? '').toString().trim();
     final currentTitleValue = (data['current_session_title'] ?? '').toString().trim();
@@ -69,6 +75,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     final totalClassesValue = int.tryParse((data['total_classes'] ?? '0').toString()) ?? 0;
     final recentRecordsValue = data['recent_records'] as List? ?? [];
 
+    // Ada data bermakna kalau mana-mana field ni bukan kosong/dash, atau ada rekod
     return (studentNameValue.isNotEmpty && studentNameValue != '-') ||
         (currentTitleValue.isNotEmpty && currentTitleValue != '-') ||
         (currentDateValue.isNotEmpty && currentDateValue != '-') ||
@@ -80,24 +87,28 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
 
   @override
   void dispose() {
-    codeController.dispose();
+    codeController.dispose(); // Dispose controller elak memory leak
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    // Fetch selepas first frame supaya context dah ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
       loadSession();
     });
   }
 
+  /// Load student ID dari SharedPreferences, auto-fill kod kalau dari QR scan,
+  /// kemudian trigger fetch data kehadiran.
   Future<void> loadSession() async {
     final prefs = await SharedPreferences.getInstance();
     final savedStudentId = prefs.getInt('student_id');
     final savedUserIdFromPrefs = prefs.getInt('user_id');
 
     savedUserId = savedUserIdFromPrefs;
+    // Prioriti: student_id dari prefs → student_id dari widget prop
     sessionStudentId = savedStudentId ?? widget.studentId;
 
     debugPrint(
@@ -105,7 +116,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       'subjectId: ${widget.subjectId}, attendanceType: $_normalizedAttendanceType',
     );
 
-    // Auto-fill code if opened via QR scan deep link
+    // Kalau page dibuka dari QR scan deep link, auto-fill kod dalam text field
     if (widget.initialCode != null && widget.initialCode!.isNotEmpty) {
       codeController.text = widget.initialCode!.toUpperCase();
     }
@@ -113,12 +124,16 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     fetchAttendanceData();
   }
 
+  /// Fetch data kehadiran pelajar dari API dengan cuba multiple candidate IDs.
+  /// Strategy: cuba student_id → widget.studentId → user_id, ambil yang return data bermakna.
+  /// Ini handle kes di mana ID dalam prefs mungkin berbeza dari ID dalam database.
   Future<void> fetchAttendanceData() async {
     setState(() {
       isLoading = true;
     });
 
     try {
+      // Kumpul semua ID yang mungkin — buang duplicate dan ID yang 0
       final candidateIds = <int>[];
       final primaryId = sessionStudentId ?? widget.studentId;
       if (primaryId > 0) candidateIds.add(primaryId);
@@ -131,9 +146,10 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
 
       http.Response? successfulResponse;
       int? successfulStudentId;
-      http.Response? lastResponse;
+      http.Response? lastResponse;      // Track response terakhir untuk debug/error message
       Map<String, dynamic>? successfulData;
 
+      // Cuba setiap ID satu per satu — stop bila jumpa data bermakna
       for (final candidateId in candidateIds) {
         final response = await http
             .get(
@@ -161,6 +177,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
             'meaningful: $hasMeaningfulData',
           );
 
+          // Kalau data bermakna, guna ID ni dan stop loop
           if (hasMeaningfulData) {
             successfulResponse = response;
             successfulStudentId = candidateId;
@@ -173,6 +190,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       if (successfulResponse != null) {
         final data = successfulData ?? json.decode(successfulResponse.body) as Map<String, dynamic>;
 
+        // Parse recent_records dari API ke format Map<String, String>
         final records = (data['recent_records'] as List? ?? [])
             .map<Map<String, String>>(
               (item) => {
@@ -185,6 +203,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
             .toList();
 
         setState(() {
+          // Update sessionStudentId ke ID yang berjaya — untuk submit attendance nanti
           sessionStudentId = successfulStudentId;
           studentName = data['student_name']?.toString() ?? '-';
           matricNumber = data['matric_number']?.toString() ?? '-';
@@ -206,6 +225,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
           isLoading = false;
         });
       } else {
+        // Semua ID gagal atau return data kosong — tunjuk error
         debugPrint('Student attendance API failed for all candidate IDs or returned only placeholder data');
         if (lastResponse != null) {
           debugPrint('Last student attendance status: ${lastResponse.statusCode}');
@@ -239,9 +259,13 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     }
   }
 
+  /// Minta GPS permission dan dapatkan koordinat semasa pelajar.
+  /// Return null kalau permission ditolak atau GPS tidak dapat dibaca.
+  /// Update [isGpsVerified] dan [gpsStatusText] untuk feedback kepada user.
   Future<LocationData?> _getVerifiedLocation() async {
     final location = Location();
 
+    // Semak dan minta location service (GPS) kalau belum aktif
     bool serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
       serviceEnabled = await location.requestService();
@@ -254,11 +278,13 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       }
     }
 
+    // Semak dan minta location permission kalau belum granted
     PermissionStatus permissionGranted = await location.hasPermission();
     if (permissionGranted == PermissionStatus.denied) {
       permissionGranted = await location.requestPermission();
     }
 
+    // Accept both granted dan grantedLimited (iOS partial permission)
     if (permissionGranted != PermissionStatus.granted &&
         permissionGranted != PermissionStatus.grantedLimited) {
       setState(() {
@@ -270,6 +296,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
 
     final locationData = await location.getLocation();
 
+    // Guard: pastikan koordinat bukan null sebelum return
     if (locationData.latitude == null || locationData.longitude == null) {
       setState(() {
         isGpsVerified = false;
@@ -286,6 +313,9 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     return locationData;
   }
 
+  /// Submit attendance code dan koordinat GPS ke API.
+  /// GPS verification wajib — kalau gagal, submission tidak diteruskan.
+  /// Selepas berjaya, clear kod dan refresh data kehadiran.
   Future<void> submitAttendance() async {
     final enteredCode = codeController.text.trim().toUpperCase();
 
@@ -303,6 +333,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     });
 
     try {
+      // GPS verification dulu sebelum submit — kalau gagal, stop sini
       final locationData = await _getVerifiedLocation();
       if (locationData == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -330,11 +361,13 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
       debugPrint('SUBMIT ATTENDANCE status => ${response.statusCode}');
       debugPrint('SUBMIT ATTENDANCE body => ${response.body}');
 
+      // Parse response body — handle kalau body kosong atau malformed JSON
       Map<String, dynamic> data = {};
       if (response.body.isNotEmpty) {
         try {
           data = json.decode(response.body) as Map<String, dynamic>;
         } catch (_) {
+          // Fallback mesej kalau JSON parse gagal
           data = {
             'message': response.statusCode >= 500
                 ? 'Server error while submitting attendance.'
@@ -347,6 +380,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         final submittedStatus = data['status']?.toString() ?? '';
         final isModule = _normalizedAttendanceType == 'module';
 
+        // Mesej berbeza untuk module (perlu verify lecturer) vs course (terus approved)
         final message = isModule
             ? (data['message']?.toString() ??
                 'Attendance submitted. Waiting for lecturer verification.')
@@ -356,6 +390,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
+        // Clear kod dan refresh dashboard selepas submit berjaya
         codeController.clear();
         fetchAttendanceData();
       } else {
@@ -373,6 +408,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         SnackBar(content: Text('Connection error: $e')),
       );
     } finally {
+      // Matikan loading state walaupun ada error
       if (mounted) {
         setState(() {
           isSubmitting = false;
@@ -393,11 +429,13 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
         backgroundColor: const Color(0xFFF3F1F2),
         body: SafeArea(
           child: isLoading
+              // Tunjuk spinner penuh page semasa loading
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Custom app bar — teal/cyan untuk student side (beza dari lecturer biru)
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
@@ -429,7 +467,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Student profile card
+                            // ── Card profil pelajar + attendance rate ──
                             Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(18),
@@ -440,6 +478,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
+                                  // Avatar placeholder — future: boleh replace dengan photo
                                   Container(
                                     width: 104,
                                     height: 104,
@@ -461,6 +500,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        // Nama pelajar dalam huruf besar
                                         Text(
                                           studentName.toUpperCase(),
                                           style: const TextStyle(
@@ -470,6 +510,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                           ),
                                         ),
                                         const SizedBox(height: 4),
+                                        // Matric dan program dalam satu baris
                                         Text(
                                           '$matricNumber - $programme',
                                           style: const TextStyle(
@@ -478,6 +519,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                           ),
                                         ),
                                         const SizedBox(height: 14),
+                                        // Attendance rate dan classes attend dalam 2 kolum
                                         Row(
                                           children: [
                                             Expanded(
@@ -507,6 +549,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
+                                                  // Format: "hadir/jumlah", contoh: "8/14"
                                                   Text(
                                                     '$classesAttend/$totalClasses',
                                                     style: const TextStyle(
@@ -535,7 +578,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                               ),
                             ),
                             const SizedBox(height: 18),
-                            // Stat cards row
+                            // ── 3 stat cards: Present / Late / Absent ──
                             Row(
                               children: [
                                 Expanded(
@@ -564,6 +607,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                               ],
                             ),
                             const SizedBox(height: 18),
+                            // ── Section submit attendance code ──
                             const Text(
                               'Submit Attendance Code',
                               style: TextStyle(
@@ -582,7 +626,8 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                               ),
                               child: Column(
                                 children: [
-                                  // Session title (already contains the date, e.g. "Lecture Session - Wednesday, 10 June 2026")
+                                  // Tunjuk title sesi kalau bukan dash/kosong
+                                  // contoh: "Lecture Session - Wednesday, 10 June 2026"
                                   if (currentSessionTitle != '-' && currentSessionTitle.isNotEmpty)
                                     Text(
                                       currentSessionTitle,
@@ -592,7 +637,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                         color: Colors.black87,
                                       ),
                                     ),
-                                  // Session time — only show if not a dash/empty
+                                  // Tunjuk masa sesi kalau ada — hanya bila bukan dash/empty
                                   if (currentSessionTime != '-' && currentSessionTime.isNotEmpty) ...[
                                     const SizedBox(height: 6),
                                     Text(
@@ -605,6 +650,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                     ),
                                   ],
                                   const SizedBox(height: 14),
+                                  // Input field kod — 6 huruf besar, font besar untuk readability
                                   Container(
                                     width: double.infinity,
                                     height: 74,
@@ -621,7 +667,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                       controller: codeController,
                                       maxLength: 6,
                                       textAlign: TextAlign.center,
-                                      textCapitalization: TextCapitalization.characters,
+                                      textCapitalization: TextCapitalization.characters, // Auto uppercase
                                       style: const TextStyle(
                                         fontSize: 32,
                                         fontWeight: FontWeight.w800,
@@ -632,18 +678,19 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                         hintText: '------',
                                         border: InputBorder.none,
                                         contentPadding: EdgeInsets.zero,
-                                        counterText: '',
+                                        counterText: '', // Sorok character counter
                                       ),
                                     ),
                                   ),
                                   const SizedBox(height: 12),
+                                  // GPS status indicator — hijau kalau verified, kuning kalau belum
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                     decoration: BoxDecoration(
                                       color: isGpsVerified
-                                          ? const Color(0xFFBFE8CC)
-                                          : const Color(0xFFFFE9C7),
+                                          ? const Color(0xFFBFE8CC) // Hijau muda
+                                          : const Color(0xFFFFE9C7), // Kuning muda
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Row(
@@ -669,6 +716,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                     ),
                                   ),
                                   const SizedBox(height: 14),
+                                  // Butang submit — disable semasa submitting, tunjuk spinner
                                   SizedBox(
                                     width: 210,
                                     height: 48,
@@ -718,6 +766,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                               ),
                             ),
                             const SizedBox(height: 18),
+                            // ── Table rekod kehadiran terkini ──
                             const Text(
                               'Recent Records',
                               style: TextStyle(
@@ -735,6 +784,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                               ),
                               child: Column(
                                 children: [
+                                  // Header table — SESSION / DATE / TIME / STATUS
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 14,
@@ -796,6 +846,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                       ],
                                     ),
                                   ),
+                                  // Empty state atau rows rekod
                                   if (recentRecords.isEmpty)
                                     const Padding(
                                       padding: EdgeInsets.all(18),
@@ -815,6 +866,8 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                         ),
                                         decoration: BoxDecoration(
                                           border: Border(
+                                            // Row pertama guna warna gelap (separator bawah header)
+                                            // Rows seterusnya guna kelabu muda
                                             top: BorderSide(
                                               color: index == 0
                                                   ? const Color(0xFF3C3C3C)
@@ -825,6 +878,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                         ),
                                         child: Row(
                                           children: [
+                                            // Label sesi, contoh: "Lecture Week 3"
                                             Expanded(
                                               flex: 3,
                                               child: Text(
@@ -835,6 +889,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                                 ),
                                               ),
                                             ),
+                                            // Tarikh sesi
                                             Expanded(
                                               flex: 3,
                                               child: Text(
@@ -845,6 +900,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                                 ),
                                               ),
                                             ),
+                                            // Masa submit
                                             Expanded(
                                               flex: 2,
                                               child: Text(
@@ -855,6 +911,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
                                                 ),
                                               ),
                                             ),
+                                            // Badge status berwarna — align kiri
                                             Expanded(
                                               flex: 2,
                                               child: Align(
@@ -897,6 +954,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     );
   }
 
+  /// Return warna text untuk badge status dalam recent records table
   Color _statusTextColor(String status) {
     switch (status) {
       case 'Present':
@@ -912,6 +970,7 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
     }
   }
 
+  /// Return warna background pastel untuk badge status dalam recent records table
   Color _statusBackgroundColor(String status) {
     switch (status) {
       case 'Present':
@@ -928,6 +987,8 @@ class _StudentAttendancePageState extends State<StudentAttendancePage> {
   }
 }
 
+/// Card statistik kecil untuk Present / Late / Absent count.
+/// [numberColor] berbeza untuk tiap jenis status — hijau/kuning/merah.
 class _StatCard extends StatelessWidget {
   final String count;
   final String label;
@@ -949,6 +1010,7 @@ class _StatCard extends StatelessWidget {
       ),
       child: Column(
         children: [
+          // Nombor besar berwarna ikut jenis status
           Text(
             count,
             style: TextStyle(
