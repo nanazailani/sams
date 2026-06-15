@@ -14,29 +14,33 @@ class StudentClassPage extends StatefulWidget {
 }
 
 class _StudentClassPageState extends State<StudentClassPage> {
+  // Base URL API — static const supaya tak perlu instantiate
   static const _baseUrl =
       'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
   int studentId = 0;
-  List<Map<String, dynamic>> bookedCourses = [];
-  List<Map<String, dynamic>> bookedModules = [];
+  List<Map<String, dynamic>> bookedCourses = []; // Senarai subjek yang didaftar
+  List<Map<String, dynamic>> bookedModules = []; // Senarai module yang didaftar
   bool isLoading = true;
 
-  // --- Lock state ---
+  // Status lock pelajar — true kalau yuran belum bayar selepas Week 5
   bool _isBlocked = false;
 
   @override
   void initState() {
     super.initState();
+    // Dua call parallel: load data pelajar DAN semak lock status
     loadSessionAndFetch();
     _checkLockStatus();
   }
 
-  // --- Lock check ---
+  /// Semak dari API sama ada pelajar ini di-block (yuran belum bayar).
+  /// Kalau blocked, butang attendance dan drop akan disabled, tunjuk warning banner.
   Future<void> _checkLockStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final sid = prefs.getInt('student_id') ?? 0;
+      // Hantar student_id sebagai query param untuk API semak status lock
       final uri = Uri.parse('$_baseUrl/week-lock/status')
           .replace(queryParameters: {'student_id': sid.toString()});
       final response =
@@ -45,20 +49,25 @@ class _StudentClassPageState extends State<StudentClassPage> {
         final data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
+            // API return boolean field 'student_blocked'
             _isBlocked = data['student_blocked'] == true;
           });
         }
       }
     } catch (e) {
+      // Silent fail — kalau lock check gagal, anggap tak blocked
       debugPrint('Lock check error: $e');
     }
   }
 
+  /// Load student ID dari SharedPreferences kemudian fetch senarai subjek.
+  /// Prioriti ID: student_id → user_id → 0
   Future<void> loadSessionAndFetch() async {
     final prefs = await SharedPreferences.getInstance();
     final savedStudentId = prefs.getInt('student_id');
     final savedUserId = prefs.getInt('user_id');
 
+    // Fallback chain: student_id → user_id → 0
     int resolvedStudentId = savedStudentId ?? savedUserId ?? 0;
 
     setState(() {
@@ -69,13 +78,17 @@ class _StudentClassPageState extends State<StudentClassPage> {
     await fetchRegisteredSubjectsWithId(resolvedStudentId);
   }
 
+  /// Wrapper untuk pull-to-refresh — guna studentId yang dah diset dalam state
   Future<void> fetchRegisteredSubjects() async {
     await fetchRegisteredSubjectsWithId(studentId);
   }
 
+  /// Fetch subjects dan modules secara parallel dari dua endpoint berbeza.
+  /// Modules deduplicate guna seenModuleIds supaya takde duplicate dalam list.
   Future<void> fetchRegisteredSubjectsWithId(int id) async {
     setState(() => isLoading = true);
 
+    // Guard: kalau ID tak valid, reset dan stop
     if (id == 0) {
       setState(() {
         bookedCourses = [];
@@ -86,6 +99,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
     }
 
     try {
+      // Fetch subjects dan modules — dua request berasingan
       final response = await http
           .get(Uri.parse('$_baseUrl/student/$id/subjects'))
           .timeout(const Duration(seconds: 10));
@@ -106,6 +120,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
       }
 
       setState(() {
+        // Map subjects ke format seragam
         bookedCourses = data.map<Map<String, dynamic>>((item) => {
               'id': item['id'],
               'subject_id': item['subject_id'],
@@ -114,6 +129,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
               'attendanceEnabled': true,
             }).toList();
 
+        // Deduplicate modules — API mungkin return duplicate module_id
         final seenModuleIds = <String>{};
         bookedModules = moduleData
             .where((item) =>
@@ -143,6 +159,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Custom app bar — teal untuk student side
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
@@ -162,17 +179,20 @@ class _StudentClassPageState extends State<StudentClassPage> {
             ),
             Expanded(
               child: RefreshIndicator(
+                // Pull-to-refresh trigger fetchRegisteredSubjects
                 onRefresh: fetchRegisteredSubjects,
                 child: isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : SingleChildScrollView(
+                        // AlwaysScrollableScrollPhysics wajib supaya RefreshIndicator berfungsi
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding:
                             const EdgeInsets.fromLTRB(16, 20, 16, 24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // ── WARNING BANNER ──
+                            // ── Warning banner — hanya dipapar kalau pelajar di-block ──
+                            // Tunjuk bila yuran belum bayar selepas Week 5
                             if (_isBlocked)
                               Container(
                                 width: double.infinity,
@@ -180,7 +200,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                                     const EdgeInsets.only(bottom: 16),
                                 padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF3CD),
+                                  color: const Color(0xFFFFF3CD), // Kuning muda
                                   borderRadius:
                                       BorderRadius.circular(12),
                                   border: Border.all(
@@ -212,6 +232,8 @@ class _StudentClassPageState extends State<StudentClassPage> {
                               ),
 
                             const SizedBox(height: 18),
+
+                            // ── Section: Booked Course ──
                             const Text(
                               'Booked Course',
                               style: TextStyle(
@@ -223,6 +245,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                             ),
                             const SizedBox(height: 12),
                             if (bookedCourses.isEmpty)
+                              // Empty state untuk course
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(18),
@@ -241,6 +264,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                                 ),
                               )
                             else
+                              // Render card untuk setiap subjek yang didaftar
                               ...bookedCourses.map(
                                 (item) => Padding(
                                   padding: const EdgeInsets.only(
@@ -256,11 +280,13 @@ class _StudentClassPageState extends State<StudentClassPage> {
                                         item['attendanceEnabled']
                                             as bool,
                                     attendanceType: 'course',
-                                    canDrop: true,
+                                    canDrop: true, // Course boleh drop, module tidak
                                   ),
                                 ),
                               ),
                             const SizedBox(height: 8),
+
+                            // ── Section: Booked Module ──
                             const Text(
                               'Booked Module',
                               style: TextStyle(
@@ -272,6 +298,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                             ),
                             const SizedBox(height: 12),
                             if (bookedModules.isEmpty)
+                              // Empty state untuk module
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(18),
@@ -290,6 +317,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                                 ),
                               )
                             else
+                              // Render card untuk setiap module yang didaftar
                               ...bookedModules.map(
                                 (item) => Padding(
                                   padding: const EdgeInsets.only(
@@ -305,7 +333,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                                         item['attendanceEnabled']
                                             as bool,
                                     attendanceType: 'module',
-                                    canDrop: false,
+                                    canDrop: false, // Module tak boleh drop dari sini
                                   ),
                                 ),
                               ),
@@ -320,6 +348,9 @@ class _StudentClassPageState extends State<StudentClassPage> {
     );
   }
 
+  /// Bina card untuk satu subjek atau module.
+  /// [canDrop] — true untuk course (ada butang Drop), false untuk module.
+  /// Semua butang disabled kalau [_isBlocked] = true (yuran belum bayar).
   Widget _buildBookingCard({
     required int subjectId,
     required String code,
@@ -339,6 +370,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Gambar ilustrasi subjek — fallback ke icon kalau asset tak jumpa
           SizedBox(
             width: 96,
             height: 96,
@@ -349,6 +381,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                 height: 78,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
+                  // Fallback icon kalau image asset tak wujud
                   return const Icon(
                     Icons.menu_book_rounded,
                     size: 68,
@@ -364,6 +397,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Kod subjek/module
                 Text(
                   code,
                   textAlign: TextAlign.center,
@@ -375,6 +409,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
                   ),
                 ),
                 const SizedBox(height: 4),
+                // Nama subjek/module
                 Text(
                   name,
                   textAlign: TextAlign.center,
@@ -386,12 +421,13 @@ class _StudentClassPageState extends State<StudentClassPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
+                // Butang-butang action — Wrap supaya responsive kalau text panjang
                 Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 10,
                   runSpacing: 10,
                   children: [
-                    // View Course — blocked when _isBlocked
+                    // Butang View Course — disabled kalau blocked
                     _buildActionButton(
                       label: 'View Course',
                       isEnabled: !_isBlocked,
@@ -407,7 +443,8 @@ class _StudentClassPageState extends State<StudentClassPage> {
                               );
                             },
                     ),
-                    // Submit Attendance — blocked when _isBlocked
+                    // Butang Submit Attendance — disabled kalau blocked atau attendance tak enabled
+                    // Label bertukar ke 'Locked' kalau blocked
                     _buildActionButton(
                       label: _isBlocked
                           ? 'Locked'
@@ -437,51 +474,56 @@ class _StudentClassPageState extends State<StudentClassPage> {
               ],
             ),
           ),
+          // Butang Drop — hanya dipapar untuk course (canDrop = true)
+          // Disabled dan label 'Locked' kalau pelajar di-block
           if (canDrop) ...[
             const SizedBox(width: 10),
-              Align(
+            Align(
               alignment: Alignment.topRight,
               child: SizedBox(
-              width: 58,
-              height: 30,
-              child: ElevatedButton(
-              onPressed: _isBlocked
-            ? null
-            : () => _confirmDropSubject(
-                  subjectId,
-                  code,
-                  name,
+                width: 58,
+                height: 30,
+                child: ElevatedButton(
+                  onPressed: _isBlocked
+                      ? null
+                      : () => _confirmDropSubject(
+                            subjectId,
+                            code,
+                            name,
+                          ),
+                  style: ElevatedButton.styleFrom(
+                    elevation: 0,
+                    // Warna kelabu kalau blocked, merah kalau boleh drop
+                    backgroundColor: _isBlocked
+                        ? const Color(0xFFE5E5E7)
+                        : const Color(0xFFFF2338),
+                    foregroundColor: _isBlocked
+                        ? const Color(0xFFB8B8BC)
+                        : Colors.white,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    _isBlocked ? 'Locked' : 'Drop',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Nunito',
+                    ),
+                  ),
                 ),
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: _isBlocked
-              ? const Color(0xFFE5E5E7)
-              : const Color(0xFFFF2338),
-          foregroundColor: _isBlocked
-              ? const Color(0xFFB8B8BC)
-              : Colors.white,
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: Text(
-          _isBlocked ? 'Locked' : 'Drop',
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            fontFamily: 'Nunito',
-          ),
-        ),
-      ),
-    ),
-  ),
-],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
+  /// Tunjuk dialog konfirmasi sebelum drop subjek.
+  /// Kalau confirm, hantar DELETE request ke API dan refresh list.
   Future<void> _confirmDropSubject(
       int subjectId, String code, String name) async {
     final shouldDrop = await showDialog<bool>(
@@ -516,6 +558,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
       ),
     );
 
+    // Stop kalau user cancel atau studentId tak valid
     if (shouldDrop != true || studentId == 0) return;
 
     try {
@@ -533,9 +576,10 @@ class _StudentClassPageState extends State<StudentClassPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Subject dropped successfully'),
-            backgroundColor: Color(0xFF67C5C4),
+            backgroundColor: Color(0xFF67C5C4), // Teal untuk success
           ),
         );
+        // Refresh list selepas drop berjaya
         await fetchRegisteredSubjects();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -555,6 +599,8 @@ class _StudentClassPageState extends State<StudentClassPage> {
     }
   }
 
+  /// Reusable action button untuk View Course dan Submit Attendance.
+  /// [isEnabled] menentukan warna — teal kalau aktif, kelabu kalau disabled.
   Widget _buildActionButton({
     required String label,
     required bool isEnabled,
@@ -567,6 +613,7 @@ class _StudentClassPageState extends State<StudentClassPage> {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           elevation: 0,
+          // Teal kalau enabled, kelabu kalau disabled
           backgroundColor: isEnabled
               ? const Color(0xFF67C5C4)
               : const Color(0xFFE5E5E7),
