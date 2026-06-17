@@ -7,9 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sams_frontend/attendance/student/attendance.dart';
 import 'pending_deep_link.dart';
 
+/* Widget wrapper yang listen untuk deep link "attendease://attendance?..."
+flow: dari QR scan dan navigate ke StudentAttendancePage secara automatik 
+pastu diletakkan kat atas MaterialApp supaya boleh intercept link bila-bila masa
+*/
 class DeepLinkHandler extends StatefulWidget {
   final Widget child;
-  final GlobalKey<NavigatorState> navigatorKey;
+  final GlobalKey<NavigatorState> navigatorKey; // Untuk navigate tanpa BuildContext local
 
   const DeepLinkHandler({
     super.key,
@@ -31,8 +35,9 @@ class _DeepLinkHandlerState extends State<DeepLinkHandler> {
     _initDeepLinks();
   }
 
+  /// Setup listener untuk deep link — handle both cold start dan warm/hot start
   Future<void> _initDeepLinks() async {
-    // Cold start — app was closed when QR was scanned
+    // Cold start — app tertutup sepenuhnya semasa QR di-scan, link ni yang launch app so kena check sekali masa app baru start
     try {
       final initialUri = await _appLinks.getInitialAppLink();
       if (initialUri != null) {
@@ -42,17 +47,18 @@ class _DeepLinkHandlerState extends State<DeepLinkHandler> {
       debugPrint('Deep link cold start error: $e');
     }
 
-    // Warm / hot — app already running
+    // Warm / hot start — app dah running di background, dia listen stream untuk link baru yang masuk semasa app sedang aktif
     _linkSubscription = _appLinks.uriLinkStream.listen(
       (uri) => _handleDeepLink(uri),
       onError: (e) => debugPrint('Deep link stream error: $e'),
     );
   }
 
-  // Parses: attendease://attendance?code=XXXXXX&subject_id=42&type=course
+  // Parse deep link dan navigate ke page yang sesuai, format yang dijangka: attendease://attendance?code=XXXXXX&subject_id=42&type=course
   Future<void> _handleDeepLink(Uri uri) async {
     debugPrint('Deep link received: $uri');
 
+    // Validate scheme dan host — abaikan link yang tak match format kita
     if (uri.scheme != 'attendease' || uri.host != 'attendance') return;
 
     final code         = uri.queryParameters['code'] ?? '';
@@ -60,27 +66,29 @@ class _DeepLinkHandlerState extends State<DeepLinkHandler> {
     final type         = uri.queryParameters['type'] ?? 'course';
     final subjectId    = int.tryParse(subjectIdStr) ?? 0;
 
+    // Guard: kalau code kosong atau subjectId tak valid, link ni diabaikan
     if (code.isEmpty || subjectId == 0) return;
 
-    // ── Auth check via SharedPreferences ────────────────────────────────────
+    // Check login status dulu sebelum proceed 
     final bool isLoggedIn = await _checkAuth();
 
     if (!isLoggedIn) {
-      // Not logged in → save the link and redirect to login
+      // for student belum login: dia simpan link untuk diproses selepas login, kemudian redirect ke LoginPage
       PendingDeepLink.save(code, subjectId, type);
       widget.navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/',              // back to LoginPage (root route)
-        (route) => false,
+        '/',              // Balik ke LoginPage (root route)
+        (route) => false, // Buang semua route sebelum ni
       );
       return;
     }
 
-    // ── Fetch subject info so the page header shows correctly ────────────────
+    // Fetch info subjek dulu supaya header page tunjuk kod & nama yang betul 
     final subjectInfo = await _fetchSubjectInfo(subjectId, type);
 
     final prefs = await SharedPreferences.getInstance();
     final studentId = prefs.getInt('student_id') ?? 0;
 
+    // Navigate ke StudentAttendancePage dengan kod yang dah pre-fill dari QR
     widget.navigatorKey.currentState?.push(
       MaterialPageRoute(
         builder: (_) => StudentAttendancePage(
@@ -89,13 +97,13 @@ class _DeepLinkHandlerState extends State<DeepLinkHandler> {
           subjectCode: subjectInfo['code'] ?? '',
           subjectName: subjectInfo['name'] ?? '',
           attendanceType: type,
-          initialCode: code,
+          initialCode: code, // Kod ni akan auto-fill dalam text field
         ),
       ),
     );
   }
 
-  /// Returns true if the student is already logged in.
+  // Return true kalau pelajar sudah login (ada student_id dan role 'student' dalam SharedPreferences)
   Future<bool> _checkAuth() async {
     final prefs = await SharedPreferences.getInstance();
     final studentId = prefs.getInt('student_id');
@@ -103,15 +111,13 @@ class _DeepLinkHandlerState extends State<DeepLinkHandler> {
     return studentId != null && studentId > 0 && role == 'student';
   }
 
-  /// Fetches the subject code and name from the API so the attendance page
-  /// header is populated correctly when opened via QR deep link.
+  // Fetch kod dan nama subjek dari API supaya header attendance page terisi dengan betul bila dibuka melalui QR deep link
   Future<Map<String, String>> _fetchSubjectInfo(int subjectId, String type) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final studentId = prefs.getInt('student_id') ?? 0;
 
-      // Reuse the same attendance endpoint — it returns student_name,
-      // subject code/name etc. We only need code + name from it.
+      // Reuse endpoint attendance yang sama, dia return banyak data cth: student_name, subject code/name... kita ambil code + name sahaja
       final response = await http.get(
         Uri.parse(
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/student/$studentId/attendance/$subjectId?type=$type',
@@ -128,16 +134,17 @@ class _DeepLinkHandlerState extends State<DeepLinkHandler> {
     } catch (e) {
       debugPrint('Failed to fetch subject info: $e');
     }
-    // Return empty strings — the page will still work, just no header text
+    // Return string kosong, page masih boleh fungsi, cuma header takde text
     return {'code': '', 'name': ''};
   }
 
   @override
   void dispose() {
+    // Cancel subscription elak memory leak / callback selepas widget dispose
     _linkSubscription?.cancel();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) => widget.child; // Widget ni invisible sebab jadikan sebagai listener
 }
