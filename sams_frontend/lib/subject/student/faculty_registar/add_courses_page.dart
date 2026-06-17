@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+//list day yang dibenarkan dalam dropdown.
+//kalau API/data lama bagi value pelik, app akan fallback ke Mon.
 const _weekdayOptions = [
   'Mon',
   'Tue',
@@ -12,6 +14,8 @@ const _weekdayOptions = [
   'Fri',
 ];
 
+//slot masa fixed utk dropdown class.
+//semua lecture/tutorial akan simpan masa ikut format range ni.
 const _timeOptions = [
   '08:00 - 09:50',
   '10:00 - 11:50',
@@ -20,10 +24,14 @@ const _timeOptions = [
   '16:00 - 17:50',
 ];
 
+//pastikan day yang masuk memang wujud dalam option.
+//ini elak DropdownButton crash bila value lama tak match list.
 String _normalizedDay(String day) {
   return _weekdayOptions.contains(day) ? day : _weekdayOptions.first;
 }
 
+//convert time lama/simple ke format slot baru yang app guna.
+//contoh "8:00 AM" akan jadi "08:00 - 09:50" supaya dropdown boleh select.
 String _normalizedTime(String time) {
   switch (time) {
     case '8:00 AM':
@@ -121,6 +129,8 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
     });
   }
 
+  //ambil lecturer dari API utk instructor dropdown.
+  //lepas dapat list, instructor kosong akan auto isi lecturer pertama.
   Future<void> _fetchLecturers() async {
     try {
       final res = await http
@@ -151,6 +161,8 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
     } catch (_) {}
   }
 
+  //top Lecturer field dah hidden, tapi backend masih perlukan lecturer_id.
+  //jadi kita sync hidden lecturer_id ikut instructor pertama yang user pilih.
   void _syncSelectedLecturerFromFirstInstructor() {
     final firstInstructor = _firstInstructorLabel();
     if (firstInstructor == null) {
@@ -189,6 +201,8 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
         '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  //save course details sekali dengan section and tutorial/lab.
+  //lecturer_id dihantar secara hidden supaya lecturer dashboard masih boleh detect course.
   Future<void> _saveCourse() async {
     if (!_formKey.currentState!.validate()) return;
     _syncSelectedLecturerFromFirstInstructor();

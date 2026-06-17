@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+//list day yang valid utk edit course.
+//fallback penting sebab data lama mungkin guna value lain.
 const _weekdayOptions = [
   'Mon',
   'Tue',
@@ -10,6 +12,8 @@ const _weekdayOptions = [
   'Fri',
 ];
 
+//slot masa standard utk edit section/tutorial.
+//value dropdown mesti sama dengan yang disimpan dalam timetable.
 const _timeOptions = [
   '08:00 - 09:50',
   '10:00 - 11:50',
@@ -18,10 +22,14 @@ const _timeOptions = [
   '16:00 - 17:50',
 ];
 
+//pastikan day dalam form edit sentiasa match option dropdown.
+//kalau tak match, default Mon digunakan supaya UI stable.
 String _normalizedDay(String day) {
   return _weekdayOptions.contains(day) ? day : _weekdayOptions.first;
 }
 
+//normalize time lama ke slot baru supaya edit form tak blank.
+//contoh data "10:00 AM" akan dipadankan ke "10:00 - 11:50".
 String _normalizedTime(String time) {
   switch (time) {
     case '8:00 AM':
@@ -97,6 +105,8 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
     super.dispose();
   }
 
+  //load subject detail and lecturer list sebelum form edit ready.
+  //dua-dua data perlu sebab section guna instructor label dari lecturer list.
   Future<void> _loadDetails() async {
     await Future.wait([
       _fetchSubjectDetails(),
@@ -188,6 +198,8 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
     _syncSelectedLecturerFromFirstInstructor();
   }
 
+  //sync hidden lecturer_id ikut first instructor yang dipilih.
+  //ini elak update course clear assignment lecturer utama.
   void _syncSelectedLecturerFromFirstInstructor() {
     final firstInstructor = _firstInstructorLabel();
     if (firstInstructor == null) {
@@ -258,6 +270,8 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
         '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  //update course details and replace section/tutorial rows.
+  //backend akan delete row lama dan insert semula row terbaru.
   Future<void> _saveCourse() async {
     if (!_formKey.currentState!.validate()) return;
     _syncSelectedLecturerFromFirstInstructor();
@@ -956,6 +970,8 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
     });
   }
 
+  //get all courses untuk table manage course.
+  //data asal disimpan dalam allSubjects, search result masuk filteredSubjects.
   Future<void> _fetchSubjects() async {
     setState(() => isLoading = true);
     try {

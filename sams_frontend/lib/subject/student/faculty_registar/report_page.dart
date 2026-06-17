@@ -42,6 +42,8 @@ class _ReportPageState extends State<ReportPage> {
     super.dispose();
   }
 
+  //ambil subject list utk report table.
+  //table ni jadi entry point untuk generate student list by section/tutorial.
   Future<void> _loadSubjects() async {
     setState(() => _isLoading = true);
 
@@ -83,6 +85,8 @@ class _ReportPageState extends State<ReportPage> {
     }).toList();
   }
 
+  //pilih section/tutorial dulu sebelum generate PDF.
+  //report perlu slot spesifik supaya student list tak bercampur semua section.
   Future<void> _openStudentListOptions(Map<String, dynamic> subject) async {
     final subjectId = subject['id'];
     if (subjectId == null || _downloadingSubjectId != null) return;
@@ -136,6 +140,8 @@ class _ReportPageState extends State<ReportPage> {
     }
   }
 
+  //convert section and tutorial data jadi report slot.
+  //mode L = lecture, mode B = tutorial/lab, backend guna mode ni utk filter.
   List<_ReportSlot> _reportSlotsFromSubject(Map<String, dynamic> subject) {
     final rawSections = subject['sections'] is List ? subject['sections'] as List : [];
     final rawTutorials = subject['tutorials'] is List ? subject['tutorials'] as List : [];
@@ -154,6 +160,8 @@ class _ReportPageState extends State<ReportPage> {
     return [...sections, ...tutorials];
   }
 
+  //download student list ikut subject and slot selected.
+  //API return approved students untuk slot tu, then app build PDF.
   Future<void> _downloadStudentList(
     Map<String, dynamic> subject,
     _ReportSlot slot,
@@ -201,6 +209,8 @@ class _ReportPageState extends State<ReportPage> {
     }
   }
 
+  //build PDF file sebelum share/download.
+  //semua data student disusun dalam table supaya senang print/simpan.
   Future<Uint8List> _buildStudentListPdf(
     Map<String, dynamic> subject,
     List<Map<String, dynamic>> students,

@@ -53,6 +53,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     _loadData();
   }
 
+  //load student info, subject detail, and current credit hour.
+  //semua data ni perlu sebelum student confirm register course.
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     final savedStudentId = prefs.getInt('student_id') ?? 0;
@@ -93,6 +95,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     } catch (_) {}
   }
 
+  //ambil detail subject termasuk section, tutorial, and timetable.
+  //kalau sections/tutorials kosong, app fallback guna timetable legacy.
   Future<void> _fetchSubjectDetail() async {
     final id = _subject['id'] ?? widget.subject['id'];
     if (id == null) return;
@@ -419,6 +423,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     return _matchingTutorialsForSection(_tutorials, _selectedSection);
   }
 
+  //filter tutorial/lab ikut prefix section lecture yang dipilih.
+  //contoh L01 hanya match tutorial/lab yang mula dengan 01.
   List<Map<String, dynamic>> _matchingTutorialsForSection(
     List<Map<String, dynamic>> tutorials,
     String? section,
@@ -437,6 +443,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     return int.parse(match.group(1)!).toString().padLeft(2, '0');
   }
 
+  //bila section berubah, reset tutorial kalau tak matching.
+  //ini elak student pilih lecture 01 tapi tutorial/lab dari section lain.
   void _setSelectedSection(String? value) {
     final matchingTutorials = _matchingTutorialsForSection(_tutorials, value);
     final matchingTutorialNames =
@@ -464,6 +472,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     }).toList();
   }
 
+  //submit selected section/tutorial to backend.
+  //backend akan validate clash, capacity, and save sebagai pending registration.
   Future<void> _confirmRegistration() async {
     if (_studentId == 0 || _isSaving) return;
 
@@ -512,6 +522,8 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
     }
   }
 
+  //send notification supaya registrar tahu ada pending approval.
+  //dipanggil selepas student pilih subjects dan mahu registrar review.
   Future<void> _notifyFacultyRegistrar() async {
     if (_studentId == 0) return;
 

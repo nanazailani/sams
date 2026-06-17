@@ -42,7 +42,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
   String? _registeredSubjectsError;
   bool _hasShownRejectionNotice = false;
 
-  // --- Lock state ---
+  //state utk payment/week lock dari backend.
+  //kalau true, app tunjuk warning banner dekat student homepage.
   bool _isBlocked = false;
 
   @override
@@ -67,7 +68,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     super.dispose();
   }
 
-  // --- Lock check ---
+  //cek sama ada student kena block sebab payment/week lock.
+  //backend decide status, frontend cuma display warning kalau blocked.
   Future<void> _checkLockStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -100,6 +102,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     );
   }
 
+  //load student profile, subject list, and registered subject sekali.
+  //fungsi ni dipanggil masa page mula buka dan bila pull-to-refresh.
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     final savedStudentId = prefs.getInt('student_id') ?? 0;
@@ -366,6 +370,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     }
   }
 
+  //search course by code or name.
+  //filteredSubjects akan update realtime bila user type dekat search box.
   void _filterSubjects() {
     final query = _searchController.text.trim().toLowerCase();
     setState(() {
@@ -388,6 +394,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     );
   }
 
+  //ambil subject yang student dah register.
+  //data ni guna untuk registered sheet, credit hour, and status display.
   Future<void> _fetchRegisteredSubjects() async {
     if (_studentId == 0) return;
 
@@ -490,6 +498,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
     }
   }
 
+  //notify faculty registrar bila student submit approval request.
+  //backend akan kira pending subject dan simpan notification untuk registrar.
   Future<void> _notifyFacultyRegistrar() async {
     if (_studentId == 0) {
       _showSnack(
@@ -692,7 +702,8 @@ class _StudentHomepageState extends State<StudentHomepage> {
                             _buildInfoTable(),
                             const SizedBox(height: 16),
 
-                            // ── WARNING BANNER (only shows when blocked) ──
+                            //warning banner keluar bila payment/week lock active.
+                            //student masih boleh baca info, tapi tahu action payment diperlukan.
                             if (_isBlocked)
                               Container(
                                 width: double.infinity,

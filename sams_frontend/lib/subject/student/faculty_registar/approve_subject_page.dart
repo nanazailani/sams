@@ -45,6 +45,8 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     super.dispose();
   }
 
+  //ambil semua request approval student dari backend.
+  //response backend group ikut student, so page boleh tunjuk summary per student.
   Future<void> _loadRequests({bool showLoading = true}) async {
     if (showLoading) {
       setState(() => _isLoading = true);
@@ -89,6 +91,8 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     }
   }
 
+  //filter list student ikut search text and status dropdown.
+  //search check nama/matric, filter pula check Pending/Approved/Rejected.
   List<Map<String, dynamic>> get _filteredStudents {
     final query = _searchController.text.trim().toLowerCase();
     return _students.where((student) {
@@ -101,6 +105,8 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     }).toList();
   }
 
+  //approve/reject satu subject student.
+  //kalau reject, user wajib isi reason sebelum request dihantar.
   Future<_SubjectActionResult> _updateSubjectStatus(
     Map<String, dynamic> subject,
     String status,
@@ -216,6 +222,8 @@ class _ApproveSubjectPageState extends State<ApproveSubjectPage> {
     return reason;
   }
 
+  //ambil subject detail utk student yang registrar pilih.
+  //data ni digunakan dalam popup supaya registrar boleh approve subject satu-satu.
   Future<List<Map<String, dynamic>>?> _fetchStudentApprovalSubjects(
     Object? studentId,
   ) async {
