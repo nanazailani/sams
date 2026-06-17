@@ -282,7 +282,12 @@ class FeeController extends Controller
             ], 422);
         }
 
-        $receiptPath = $request->file('receipt')->store('payment_receipts', 'public');
+        
+        $receiptPath = $request->file('receipt')->storeAs(
+        'payment_receipts',
+        uniqid() . '_' . time() . '.' . $request->file('receipt')->getClientOriginalExtension(),
+        ['disk' => 'public_direct']
+        );
 
         $insertData = [
             'student_id' => $studentId,
