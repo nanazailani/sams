@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../main.dart' show LoginPage;
+import '../../../main.dart' show LoginPage;
 
 class StudentHomepage extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onRegisterSubject;

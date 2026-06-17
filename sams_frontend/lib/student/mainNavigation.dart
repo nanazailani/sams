@@ -1,8 +1,8 @@
 
 import 'package:flutter/material.dart';
-import '../subject/student/homepage.dart';
+import '../subject/student/student/homepage.dart';
 import '../attendance/student/class.dart';
-import '../subject/student/register_courses.dart';
+import '../subject/student/student/register_courses.dart';
 
 import '../Curriculum/student/curriculum_page.dart';
 import '../tuition_fee/student/fee_dashboard.dart';

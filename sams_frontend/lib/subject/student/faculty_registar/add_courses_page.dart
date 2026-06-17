@@ -63,7 +63,8 @@ class AddCoursesPage extends StatefulWidget {
 class _AddCoursesPageState extends State<AddCoursesPage> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
-  static const _apiBaseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
+  static const _apiBaseUrl =
+      'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
@@ -78,7 +79,7 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
   bool _examIsAm = true;
   bool _isSaving = false;
   int _registrarId = 0;
-  int? _selectedLecturerId; // ← TAMBAH
+  int? _selectedLecturerId;
 
   List<_LecturerOption> get _lecturerOptions =>
       _lecturers ?? const <_LecturerOption>[];
@@ -133,19 +134,46 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
       final lecturers = raw
           .map((item) =>
               _LecturerOption.fromJson(Map<String, dynamic>.from(item)))
-          .where((lecturer) => lecturer.label.isNotEmpty)
+          .where((lecturer) => lecturer.id > 0 && lecturer.label.isNotEmpty)
           .toList();
 
       setState(() {
         _lecturers = lecturers;
-        final defaultLecturer = lecturers.isEmpty ? null : lecturers.first.label;
-        if (defaultLecturer == null) return;
-
-        for (final entry in [..._sections, ..._tutorials]) {
-          if (entry.instructor.isEmpty) entry.instructor = defaultLecturer;
+        final defaultLecturer =
+            lecturers.isEmpty ? null : lecturers.first.label;
+        if (defaultLecturer != null) {
+          for (final entry in [..._sections, ..._tutorials]) {
+            if (entry.instructor.isEmpty) entry.instructor = defaultLecturer;
+          }
         }
+        _syncSelectedLecturerFromFirstInstructor();
       });
     } catch (_) {}
+  }
+
+  void _syncSelectedLecturerFromFirstInstructor() {
+    final firstInstructor = _firstInstructorLabel();
+    if (firstInstructor == null) {
+      _selectedLecturerId = null;
+      return;
+    }
+
+    for (final lecturer in _lecturerOptions) {
+      if (lecturer.label == firstInstructor) {
+        _selectedLecturerId = lecturer.id;
+        return;
+      }
+    }
+
+    _selectedLecturerId = null;
+  }
+
+  String? _firstInstructorLabel() {
+    for (final entry in [..._sections, ..._tutorials]) {
+      final instructor = entry.instructor.trim();
+      if (instructor.isNotEmpty) return instructor;
+    }
+    return null;
   }
 
   Future<void> _pickExamDate() async {
@@ -163,6 +191,17 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
 
   Future<void> _saveCourse() async {
     if (!_formKey.currentState!.validate()) return;
+    _syncSelectedLecturerFromFirstInstructor();
+
+    if (_selectedLecturerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an instructor'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -176,7 +215,7 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
           'code': _codeController.text.trim().toUpperCase(),
           'name': _nameController.text.trim(),
           'credit_hour': int.parse(_creditController.text.trim()),
-          'lecturer_id': _selectedLecturerId, // ← TAMBAH
+          'lecturer_id': _selectedLecturerId,
           'registrar_id': _registrarId,
           'examination': _hasExamination,
           'exam_date': _hasExamination ? _examDateController.text.trim() : null,
@@ -354,51 +393,6 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
           },
         ),
         const SizedBox(height: 10),
-        // ← TAMBAH: Lecturer dropdown untuk subject
-        Row(
-          children: [
-            const SizedBox(width: 88, child: _FormLabel('Lecturer:')),
-            Expanded(
-              child: DropdownButtonFormField<int>(
-                value: _selectedLecturerId,
-                decoration: InputDecoration(
-                  isDense: true,
-                  filled: true,
-                  fillColor: const Color(0xFFE2DDDD),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
-                  errorStyle: const TextStyle(height: 0.7, fontSize: 9),
-                ),
-                hint: Text(
-                  _lecturerOptions.isEmpty
-                      ? 'No lecturer found'
-                      : 'Select lecturer',
-                  style: const TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                items: _lecturerOptions
-                    .map((l) => DropdownMenuItem(
-                          value: l.id,
-                          child: Text(
-                            l.label,
-                            style: const TextStyle(fontSize: 11),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ))
-                    .toList(),
-                validator: (v) => v == null ? 'Required' : null,
-                onChanged: _lecturerOptions.isEmpty
-                    ? null
-                    : (val) => setState(() => _selectedLecturerId = val),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
         Row(
           children: [
             const SizedBox(width: 88, child: _FormLabel('Examination:')),
@@ -577,7 +571,10 @@ class _AddCoursesPageState extends State<AddCoursesPage> {
           child: _LecturerDropdown(
             value: entry.instructor,
             lecturers: _lecturerOptions,
-            onChanged: (value) => setState(() => entry.instructor = value),
+            onChanged: (value) => setState(() {
+              entry.instructor = value;
+              _syncSelectedLecturerFromFirstInstructor();
+            }),
           ),
         ),
       ],
@@ -666,19 +663,19 @@ class _ClassEntry {
 }
 
 class _LecturerOption {
-  final int id;        // ← TAMBAH
+  final int id;
   final String staffId;
   final String name;
 
   const _LecturerOption({
-    required this.id,  // ← TAMBAH
+    required this.id,
     required this.staffId,
     required this.name,
   });
 
   factory _LecturerOption.fromJson(Map<String, dynamic> json) {
     return _LecturerOption(
-      id: int.tryParse(json['id']?.toString() ?? '') ?? 0, // ← TAMBAH
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       staffId: json['staff_id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
     );
@@ -738,11 +735,11 @@ class _PillTextField extends StatelessWidget {
         suffixIcon: suffixIcon == null
             ? null
             : Icon(suffixIcon, size: 15, color: Colors.grey.shade600),
-        suffixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 24),
+        suffixIconConstraints:
+            const BoxConstraints(minWidth: 26, minHeight: 24),
         filled: true,
         fillColor: const Color(0xFFE2DDDD),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
@@ -777,8 +774,7 @@ class _PillDropdown extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: const Color(0xFFE2DDDD),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
@@ -820,8 +816,7 @@ class _LecturerDropdown extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: const Color(0xFFE2DDDD),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,

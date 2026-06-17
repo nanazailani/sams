@@ -8,8 +8,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
+// controller utk urus semua proses yang relate dengan subject
 class RegistrationController extends Controller
 {
+    // display all subject and check kalau subject tu student dah regisster
     public function index(Request $request)
     {
         $studentId = $request->query('student_id');
@@ -22,6 +24,7 @@ class RegistrationController extends Controller
                 ->get();
             $hasApprovalStatus = Schema::hasColumn('subject_registrations', 'approval_status');
 
+            // subject yang kena reject x dikira sebagai registered
             $registeredSubjectIds = $registrations
                 ->filter(function ($row) use ($hasApprovalStatus) {
                     return !$hasApprovalStatus || ($row->approval_status ?? 'Pending') !== 'Rejected';
@@ -30,6 +33,7 @@ class RegistrationController extends Controller
                 ->map(fn($id) => (int) $id)
                 ->all();
 
+                // get the rejection reason
             if (Schema::hasColumn('subject_registrations', 'rejection_reason')) {
                 $rejectedSubjects = $registrations
                     ->filter(fn($row) => ($row->approval_status ?? null) === 'Rejected')
@@ -40,6 +44,7 @@ class RegistrationController extends Controller
             }
         }
 
+        // susun subject ikut code
         $subjects = Subject::orderBy('code')->get();
 
         return $subjects->map(function (Subject $subject) use ($registeredSubjectIds, $rejectedSubjects) {
@@ -59,6 +64,7 @@ class RegistrationController extends Controller
         });
     }
 
+    // save subject baru daftar
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -90,9 +96,13 @@ class RegistrationController extends Controller
                 'code'        => strtoupper($validated['code']),
                 'name'        => $validated['name'],
                 'credit_hour' => $validated['credit_hour'],
-                'lecturer_id' => $validated['lecturer_id'] ?? null,
             ];
 
+            if (array_key_exists('lecturer_id', $validated)) {
+                $subjectData['lecturer_id'] = $validated['lecturer_id'];
+            }
+
+            //tambah date exam
             foreach (['examination', 'exam_date', 'exam_period'] as $column) {
                 if (Schema::hasColumn('subjects', $column)) {
                     $subjectData[$column] = $validated[$column] ?? null;
@@ -101,6 +111,7 @@ class RegistrationController extends Controller
 
             $subject = Subject::create($subjectData);
 
+            //tambah lecture and tutorial/lab section untuk subject baru
             $this->insertClassEntries('lecture_section', $subject->id, $validated['sections'] ?? []);
             $this->insertClassEntries('lab_section', $subject->id, $validated['tutorials'] ?? []);
 
@@ -111,6 +122,7 @@ class RegistrationController extends Controller
         });
     }
 
+    //ambil detail full untuk satu subject
     public function show($id)
     {
         $subject = Subject::findOrFail($id);
@@ -134,6 +146,7 @@ class RegistrationController extends Controller
         ]);
     }
 
+    //untuk udpdate data subject
     public function update(Request $request, $id)
     {
         $subject = Subject::findOrFail($id);
@@ -162,13 +175,17 @@ class RegistrationController extends Controller
             'tutorials.*.instructor' => ['nullable', 'string', 'max:255'],
         ]);
 
+        //pastikan update data subject dan section berlaku dalam satu masa
         return DB::transaction(function () use ($subject, $validated) {
             $subjectData = [
                 'code'        => strtoupper($validated['code']),
                 'name'        => $validated['name'],
                 'credit_hour' => $validated['credit_hour'],
-                'lecturer_id' => $validated['lecturer_id'] ?? null,
             ];
+
+            if (array_key_exists('lecturer_id', $validated)) {
+                $subjectData['lecturer_id'] = $validated['lecturer_id'];
+            }
 
             foreach (['examination', 'exam_date', 'exam_period'] as $column) {
                 if (Schema::hasColumn('subjects', $column)) {
@@ -176,6 +193,7 @@ class RegistrationController extends Controller
                 }
             }
 
+            //update subject, buang section lama, and masukkan section abru
             $subject->update($subjectData);
             $this->replaceClassEntries('lecture_section', $subject->id, $validated['sections'] ?? []);
             $this->replaceClassEntries('lab_section', $subject->id, $validated['tutorials'] ?? []);
@@ -187,6 +205,7 @@ class RegistrationController extends Controller
         });
     }
 
+    // padam subject based on id
     public function destroy($id)
     {
         $subject = Subject::findOrFail($id);
@@ -195,6 +214,8 @@ class RegistrationController extends Controller
         return response()->json(['message' => 'Subject deleted successfully']);
     }
 
+    //untuk daftarkan student dalam satu subject
+    //cek subject clash
     public function register(Request $request)
     {
         $validated = $request->validate([
@@ -204,12 +225,14 @@ class RegistrationController extends Controller
             'tutorial_lab' => ['nullable', 'string', 'max:50'],
         ]);
 
+        //tutorial/lab mesti datang from nombor yang sama dgn lecture
         if (!$this->tutorialMatchesLectureSection($validated['section'] ?? null, $validated['tutorial_lab'] ?? null)) {
             return response()->json([
                 'message' => 'Tutorial/Lab must match the selected lecture section.',
             ], 422);
         }
 
+        //cek subject clash dengan subject sebelum
         $clash = $this->findRegistrationClash(
             (int) $validated['student_id'],
             (int) $validated['subject_id'],
@@ -247,6 +270,7 @@ class RegistrationController extends Controller
             $data['rejection_reason'] = null;
         }
 
+        //elak duplicate registration untuk student amd subject yang sama
         DB::table('subject_registrations')->updateOrInsert(
             [
                 'student_id' => $validated['student_id'],
@@ -261,11 +285,13 @@ class RegistrationController extends Controller
         return response()->json(['message' => 'Subject registered successfully']);
     }
 
+    //ambil list student yang still pending
     public function registeredSubjects($studentId)
     {
         return $this->registeredSubjectRows($studentId, true, true);
     }
 
+    //ambil list student yang subject and section dah lulus
     public function registeredStudentsBySubject(Request $request, $subjectId)
     {
         $subject = Subject::findOrFail($subjectId);
@@ -290,6 +316,7 @@ class RegistrationController extends Controller
             $query->whereRaw('1 = 0');
         }
 
+        //setkan "B" utk tutorial/lab section, selain tu pakai "L"
         $slotColumn = $mode === 'B' ? 'tutorial_lab' : 'section';
         if ($slot !== '' && Schema::hasColumn('subject_registrations', $slotColumn)) {
             $query->where("subject_registrations.$slotColumn", $slot);
@@ -331,6 +358,7 @@ class RegistrationController extends Controller
         ]);
     }
 
+    //buang satu/semua subject yang student daftar
     public function removeRegisteredSubject($studentId, $subjectId = null)
     {
         $query = DB::table('subject_registrations')->where('student_id', $studentId);
@@ -348,6 +376,7 @@ class RegistrationController extends Controller
         ]);
     }
 
+    //utk notify faculty registar lepas student daftar subject
     public function notifyRegistrar($studentId)
     {
         $pendingQuery = DB::table('subject_registrations')->where('student_id', $studentId);
@@ -381,6 +410,7 @@ class RegistrationController extends Controller
         ]);
     }
 
+    //display semua registration utk fac.regis check
     public function approvalRequests(Request $request)
     {
         if (!Schema::hasTable('subject_registrations')) {
@@ -403,6 +433,7 @@ class RegistrationController extends Controller
             ->groupBy('students.id', 'users.name', 'students.matric_no', 'students.programme', 'students.year')
             ->orderBy('users.name');
 
+            //function search
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -434,6 +465,7 @@ class RegistrationController extends Controller
         ]);
     }
 
+    //detail student dgn status subject
     public function studentApprovalSubjects($studentId)
     {
         $subjects = $this->registeredSubjectRows($studentId, true)->map(function ($subject) {
@@ -446,6 +478,7 @@ class RegistrationController extends Controller
         ]);
     }
 
+    //update status registration (Pending, Approved, Rejected)
     public function updateRegistrationStatus(Request $request, $registrationId = null)
     {
         $validated = $request->validate([
@@ -488,8 +521,7 @@ class RegistrationController extends Controller
         ]);
     }
 
-    // ─── PRIVATE HELPERS ────────────────────────────────────────────────────────
-
+    //masukkan senarai lecture/tutorial dlm table
     private function insertClassEntries(string $table, int $subjectId, array $entries): void
     {
         if (!Schema::hasTable($table)) {
@@ -527,6 +559,7 @@ class RegistrationController extends Controller
         }
     }
 
+    //padam section lama and ganti dengan section baru
     private function replaceClassEntries(string $table, int $subjectId, array $entries): void
     {
         if (!Schema::hasTable($table) || !Schema::hasColumn($table, 'subject_id')) {
@@ -537,6 +570,7 @@ class RegistrationController extends Controller
         $this->insertClassEntries($table, $subjectId, $entries);
     }
 
+    //create data subject yang student daftar, include timetable and status
     private function registeredSubjectRows($studentId, bool $includeApprovalStatus = false, bool $onlyUnapproved = false)
     {
         if (!Schema::hasTable('subject_registrations')) {
@@ -614,6 +648,7 @@ class RegistrationController extends Controller
         });
     }
 
+    //cari clash antara timetable dengan subject yang student dah register
     private function findRegistrationClash(int $studentId, int $subjectId, ?string $section, ?string $tutorialLab): ?array
     {
         if (!Schema::hasTable('subject_registrations')) {
@@ -684,6 +719,7 @@ class RegistrationController extends Controller
         return null;
     }
 
+    //filter utk dapatkan jadual selected lecture and tutorial section
     private function selectedTimetableEntries(array $timetable, ?string $section, ?string $tutorialLab): array
     {
         $selected    = [];
@@ -722,6 +758,7 @@ class RegistrationController extends Controller
         return $selected;
     }
 
+    //cek jadual masa and time clash atau tidak
     private function timetableEntriesClash(array $first, array $second): bool
     {
         if (
@@ -743,16 +780,19 @@ class RegistrationController extends Controller
             && $secondRange['start'] < $firstRange['end'];
     }
 
+    //change the day name to short lowercase format
     private function normalizedTimetableDay($day): string
     {
         return strtolower(substr(trim((string) $day), 0, 3));
     }
 
+    //remove space and use same time format
     private function normalizedTimetableTime($time): string
     {
         return preg_replace('/\s+/', '', strtolower(trim((string) $time)));
     }
 
+    //change time into minute
     private function timetableTimeRange($time): ?array
     {
         $time = strtolower(trim((string) $time));
@@ -775,6 +815,7 @@ class RegistrationController extends Controller
         return ['start' => $start, 'end' => $end];
     }
 
+    //change 12-hour time to 24-hour
     private function timeToMinutes(string $time): ?int
     {
         $time = trim($time);
@@ -803,6 +844,7 @@ class RegistrationController extends Controller
         return ($hour * 60) + $minute;
     }
 
+    //summarise approval status
     private function approvalStatusSummary($registrations = null)
     {
         if (!Schema::hasColumn('subject_registrations', 'approval_status')) {
@@ -842,6 +884,7 @@ class RegistrationController extends Controller
         ];
     }
 
+    //dptkan maklumat student utk approval page
     private function approvalStudentInfo($studentId): ?array
     {
         $student = DB::table('students')
@@ -864,6 +907,7 @@ class RegistrationController extends Controller
         ];
     }
 
+    //get PA's name
     private function getStudentAdvisor(int $studentId): string
     {
         if (!Schema::hasColumn('students', 'advisor')) {
@@ -873,6 +917,7 @@ class RegistrationController extends Controller
         return (string) (DB::table('students')->where('id', $studentId)->value('advisor') ?? '-');
     }
 
+    //combine nama instructor for lecture and lab
     private function getSubjectInstructors(int $subjectId): array
     {
         $instructors = [];
@@ -911,6 +956,7 @@ class RegistrationController extends Controller
         return $instructors;
     }
 
+    //get data dalam jadual from lecture, lab
     private function getSubjectTimetableEntries(string $table, int $subjectId, string $mode = ''): array
     {
         if (!Schema::hasTable($table) || !Schema::hasColumn($table, 'subject_id')) {
@@ -978,6 +1024,7 @@ class RegistrationController extends Controller
             ->all();
     }
 
+    //summary of selected section and time
     private function selectedTimetableDetails(array $timetable, ?string $section, ?string $tutorialLab): array
     {
         $matches     = [];
@@ -1019,6 +1066,7 @@ class RegistrationController extends Controller
         ];
     }
 
+    //matchkan lecture and lab number
     private function tutorialMatchesLectureSection(?string $section, ?string $tutorialLab): bool
     {
         $sectionPrefix  = $this->sectionNumericPrefix($section);
@@ -1031,6 +1079,7 @@ class RegistrationController extends Controller
         return $sectionPrefix === $tutorialPrefix;
     }
 
+    
     private function sectionNumericPrefix(?string $value): string
     {
         $value = trim((string) ($value ?? ''));

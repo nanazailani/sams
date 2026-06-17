@@ -10,7 +10,7 @@ class Subject extends Model
         'code',
         'name',
         'credit_hour',
-        'lecturer_id',   // ← tambah ni kalau takde
+        'lecturer_id',  
         'examination',
         'exam_date',
         'exam_period',

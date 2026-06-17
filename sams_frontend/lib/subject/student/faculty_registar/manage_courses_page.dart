@@ -60,7 +60,8 @@ class _CourseDetailsDialog extends StatefulWidget {
 class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
   static const _primaryColor = Color(0xFF3FC7C4);
   static const _secondaryColor = Color(0xFFE6D36F);
-  static const _apiBaseUrl = 'https://darkgrey-lyrebird-505549.hostingersite.com/api';
+  static const _apiBaseUrl =
+      'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
@@ -75,6 +76,7 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
   bool _examIsAm = true;
   bool _isLoading = true;
   bool _isSaving = false;
+  int? _selectedLecturerId;
 
   @override
   void initState() {
@@ -131,7 +133,7 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
       _lecturers = raw
           .map((item) =>
               _LecturerOption.fromJson(Map<String, dynamic>.from(item)))
-          .where((lecturer) => lecturer.label.isNotEmpty)
+          .where((lecturer) => lecturer.id > 0 && lecturer.label.isNotEmpty)
           .toList();
     } catch (_) {}
   }
@@ -141,10 +143,14 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
     _nameController.text = subject['name']?.toString() ?? '';
     _creditController.text =
         (subject['credit_hour'] ?? subject['credits'] ?? '').toString();
+    if (subject.containsKey('lecturer_id')) {
+      _selectedLecturerId =
+          int.tryParse(subject['lecturer_id']?.toString() ?? '');
+    }
     _hasExamination = _boolValue(subject['examination'], fallback: true);
     _examDateController.text = subject['exam_date']?.toString() ?? '';
-    _examIsAm = (subject['exam_period']?.toString().toUpperCase() ?? 'AM') !=
-        'PM';
+    _examIsAm =
+        (subject['exam_period']?.toString().toUpperCase() ?? 'AM') != 'PM';
 
     _replaceEntries(_sections, subject['sections']);
     _replaceEntries(_tutorials, subject['tutorials']);
@@ -172,11 +178,47 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
 
   void _applyDefaultLecturer() {
     if (_lecturers.isEmpty) return;
-    final defaultLecturer = _lecturers.first.label;
+    final defaultLecturer =
+        _lecturerForId(_selectedLecturerId)?.label ?? _lecturers.first.label;
 
     for (final entry in [..._sections, ..._tutorials]) {
       if (entry.instructor.isEmpty) entry.instructor = defaultLecturer;
     }
+
+    _syncSelectedLecturerFromFirstInstructor();
+  }
+
+  void _syncSelectedLecturerFromFirstInstructor() {
+    final firstInstructor = _firstInstructorLabel();
+    if (firstInstructor == null) {
+      _selectedLecturerId = null;
+      return;
+    }
+
+    for (final lecturer in _lecturers) {
+      if (lecturer.label == firstInstructor) {
+        _selectedLecturerId = lecturer.id;
+        return;
+      }
+    }
+
+    _selectedLecturerId = null;
+  }
+
+  String? _firstInstructorLabel() {
+    for (final entry in [..._sections, ..._tutorials]) {
+      final instructor = entry.instructor.trim();
+      if (instructor.isNotEmpty) return instructor;
+    }
+    return null;
+  }
+
+  _LecturerOption? _lecturerForId(int? id) {
+    if (id == null) return null;
+    for (final lecturer in _lecturers) {
+      if (lecturer.id == id) return lecturer;
+    }
+    return null;
   }
 
   bool _boolValue(dynamic value, {required bool fallback}) {
@@ -199,6 +241,7 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
       entries.add(_ClassEntry(
         instructor: _lecturers.isEmpty ? '' : _lecturers.first.label,
       ));
+      _syncSelectedLecturerFromFirstInstructor();
     });
   }
 
@@ -217,6 +260,17 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
 
   Future<void> _saveCourse() async {
     if (!_formKey.currentState!.validate()) return;
+    _syncSelectedLecturerFromFirstInstructor();
+
+    if (_selectedLecturerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an instructor'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -230,6 +284,7 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
           'code': _codeController.text.trim().toUpperCase(),
           'name': _nameController.text.trim(),
           'credit_hour': int.parse(_creditController.text.trim()),
+          'lecturer_id': _selectedLecturerId,
           'examination': _hasExamination,
           'exam_date': _hasExamination ? _examDateController.text.trim() : null,
           'exam_period': _hasExamination ? (_examIsAm ? 'AM' : 'PM') : null,
@@ -327,8 +382,9 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed:
-                                  _isSaving ? null : () => Navigator.pop(context),
+                              onPressed: _isSaving
+                                  ? null
+                                  : () => Navigator.pop(context),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.grey.shade700,
                                 side: BorderSide(color: Colors.grey.shade300),
@@ -572,7 +628,10 @@ class _CourseDetailsDialogState extends State<_CourseDetailsDialog> {
               child: _LecturerDropdown(
                 value: entry.instructor,
                 lecturers: _lecturers,
-                onChanged: (value) => setState(() => entry.instructor = value),
+                onChanged: (value) => setState(() {
+                  entry.instructor = value;
+                  _syncSelectedLecturerFromFirstInstructor();
+                }),
               ),
             ),
           ],
@@ -676,16 +735,19 @@ class _ClassEntry {
 }
 
 class _LecturerOption {
+  final int id;
   final String staffId;
   final String name;
 
   const _LecturerOption({
+    required this.id,
     required this.staffId,
     required this.name,
   });
 
   factory _LecturerOption.fromJson(Map<String, dynamic> json) {
     return _LecturerOption(
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       staffId: json['staff_id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
     );
@@ -745,11 +807,11 @@ class _PillTextField extends StatelessWidget {
         suffixIcon: suffixIcon == null
             ? null
             : Icon(suffixIcon, size: 15, color: Colors.grey.shade600),
-        suffixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 24),
+        suffixIconConstraints:
+            const BoxConstraints(minWidth: 26, minHeight: 24),
         filled: true,
         fillColor: const Color(0xFFE2DDDD),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
@@ -784,8 +846,7 @@ class _PillDropdown extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: const Color(0xFFE2DDDD),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
@@ -826,8 +887,7 @@ class _LecturerDropdown extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: const Color(0xFFE2DDDD),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
@@ -902,8 +962,8 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
       final res = await http
 
           // .get(Uri.parse('http://10.0.2.2:8000/api/subjects'))
-          .get(Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/subjects'))
-
+          .get(Uri.parse(
+              'https://darkgrey-lyrebird-505549.hostingersite.com/api/subjects'))
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
@@ -924,13 +984,11 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete Subject'),
-        content: Text(
-            'Are you sure you want to delete "${subject['name']}"?'),
+        content: Text('Are you sure you want to delete "${subject['name']}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.grey)),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -939,8 +997,7 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Delete',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -950,9 +1007,9 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
 
     try {
       final res = await http.delete(
-
         //Uri.parse('http://10.0.2.2:8000/api/subjects/$id'),
-        Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/subjects/$id'),
+        Uri.parse(
+            'https://darkgrey-lyrebird-505549.hostingersite.com/api/subjects/$id'),
 
         headers: {'Accept': 'application/json'},
       );
@@ -1044,8 +1101,8 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
                             fontSize: 13,
                             letterSpacing: 1.2,
                           ),
-                          prefixIcon: Icon(Icons.search,
-                              color: Colors.grey.shade400),
+                          prefixIcon:
+                              Icon(Icons.search, color: Colors.grey.shade400),
                           border: InputBorder.none,
                           contentPadding:
                               const EdgeInsets.symmetric(vertical: 14),
@@ -1223,10 +1280,11 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
                                                       onTap: () =>
                                                           _showViewDialog(s),
                                                       child: Container(
-                                                        padding: const EdgeInsets
-                                                            .symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 4),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 10,
+                                                                vertical: 4),
                                                         decoration:
                                                             BoxDecoration(
                                                           gradient:
@@ -1261,10 +1319,11 @@ class _ManageCoursesPageState extends State<ManageCoursesPage> {
                                                       onTap: () =>
                                                           _deleteSubject(s),
                                                       child: Container(
-                                                        padding: const EdgeInsets
-                                                            .symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 4),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 10,
+                                                                vertical: 4),
                                                         decoration:
                                                             BoxDecoration(
                                                           color: const Color(
