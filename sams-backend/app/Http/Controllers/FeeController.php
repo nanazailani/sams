@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\Schema;
 class FeeController extends Controller
 {
     /**
-     * Resolve incoming student id safely.
-     * Accept either students.id or users.id.
+     * Resolve student ID dengan selamat.
+     * Boleh terima students.id atau users.id — dua-dua okay.
+     * Kalau tak jumpa, return null.
      */
     private function resolveStudentId($incomingStudentId): ?int
     {
@@ -21,6 +22,7 @@ class FeeController extends Controller
 
         $incomingStudentId = (int) $incomingStudentId;
 
+        // Cuba cari terus guna students.id
         $directStudentId = DB::table('students')
             ->where('id', $incomingStudentId)
             ->value('id');
@@ -29,6 +31,7 @@ class FeeController extends Controller
             return (int) $directStudentId;
         }
 
+        // Kalau tak jumpa, cuba guna users.id pula
         $studentByUserId = DB::table('students')
             ->where('user_id', $incomingStudentId)
             ->value('id');
@@ -37,11 +40,13 @@ class FeeController extends Controller
             return (int) $studentByUserId;
         }
 
+        // Langsung tak jumpa — return null
         return null;
     }
 
     /**
-     * Get student basic record with joined user info.
+     * Ambil rekod student lengkap dengan info dari users table sekali.
+     * Join dengan users sebab nama student ada kat sana.
      */
     private function getStudentRecord(int $studentId)
     {
@@ -61,7 +66,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Get tuition fee config by programme.
+     * Cari konfigurasi yuran berdasarkan programme student.
+     * Ambil yang paling baru (orderByDesc) kalau ada lebih dari satu.
      */
     private function getFeeConfigForStudent($student)
     {
@@ -76,7 +82,9 @@ class FeeController extends Controller
     }
 
     /**
-     * Calculate total amount based on hostel status.
+     * Kira jumlah bayaran berdasarkan status hostel student.
+     * Kalau student duduk hostel, tambah hostel fee sekali.
+     * Kalau tidak, yuran pengajian je.
      */
     private function calculateTotalAmount($student, $fee): float
     {
@@ -89,8 +97,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Student dashboard
-     * Tuition Fee Management page
+     * Dashboard student — paparan status yuran secara ringkas.
+     * Tunjuk berapa dah bayar, berapa lagi outstanding, completion percentage.
      */
     public function getStudentFeeStatus($studentId)
     {
@@ -118,14 +126,17 @@ class FeeController extends Controller
             ], 404);
         }
 
+        // Kira jumlah keseluruhan yuran
         $totalAmount = $this->calculateTotalAmount($student, $fee);
 
+        // Jumlah yang dah approved je dikira sebagai dah bayar
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
             ->where('status', 'Approved')
             ->sum('amount');
 
+        // Jumlah yang pending — belum disahkan lagi
         $pendingPaid = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
@@ -137,6 +148,7 @@ class FeeController extends Controller
             ? round(($approvedPaid / $totalAmount) * 100)
             : 0;
 
+        // Tentukan status keseluruhan — Paid, Partial, atau Unpaid
         $overallStatus = $remaining <= 0
             ? 'Paid'
             : ($approvedPaid > 0 ? 'Partial' : 'Unpaid');
@@ -160,7 +172,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Student fee details page
+     * Halaman detail yuran student.
+     * Lebih terperinci dari dashboard — tunjuk breakdown yuran pengajian vs hostel.
      */
     public function getFeeDetails($studentId)
     {
@@ -205,6 +218,7 @@ class FeeController extends Controller
             ? 'Paid'
             : ($approvedPaid > 0 ? 'Partial' : 'Unpaid');
 
+        // Hostel fee hanya apply kalau student duduk hostel
         $hostelFeeApplied = ((int) ($student->hostel ?? 0) === 1)
             ? (float) ($fee->hostel_fee ?? 0)
             : 0.0;
@@ -230,7 +244,9 @@ class FeeController extends Controller
     }
 
     /**
-     * Student submit payment
+     * Student submit bayaran.
+     * Upload resit, validate amount, simpan rekod payment dalam DB.
+     * Status default = Pending — kena tunggu treasurer approve.
      */
     public function submitPayment(Request $request)
     {
@@ -267,6 +283,7 @@ class FeeController extends Controller
 
         $totalAmount = $this->calculateTotalAmount($student, $fee);
 
+        // Kira baki yang belum bayar berdasarkan approved payments je
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
@@ -275,6 +292,7 @@ class FeeController extends Controller
 
         $remaining = max($totalAmount - $approvedPaid, 0);
 
+        // Tak boleh bayar lebih dari yang outstanding
         if ($request->amount > $remaining) {
             return response()->json([
                 'message' => 'Payment amount exceeds outstanding balance',
@@ -282,13 +300,15 @@ class FeeController extends Controller
             ], 422);
         }
 
-        
+        // Simpan resit terus ke public/storage supaya boleh diakses via URL
+        // Guna public_direct disk — save ke public/storage/payment_receipts/
         $receiptPath = $request->file('receipt')->storeAs(
-        'payment_receipts',
-        uniqid() . '_' . time() . '.' . $request->file('receipt')->getClientOriginalExtension(),
-        ['disk' => 'public_direct']
+            'payment_receipts',
+            uniqid() . '_' . time() . '.' . $request->file('receipt')->getClientOriginalExtension(),
+            ['disk' => 'public_direct']
         );
 
+        // Prepare data untuk insert — check column wujud dulu sebelum masukkan
         $insertData = [
             'student_id' => $studentId,
             'tuition_fee_id' => $fee->id,
@@ -322,7 +342,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Student payment history
+     * Sejarah pembayaran student.
+     * Return summary (jumlah bayar, outstanding) dan senarai semua payment.
      */
     public function getPaymentHistory($studentId)
     {
@@ -352,6 +373,7 @@ class FeeController extends Controller
 
         $totalAmount = $this->calculateTotalAmount($student, $fee);
 
+        // Kira summary — berapa approved, pending, dan total semua
         $summary = [
             'total_paid' => DB::table('payments')
                 ->where('student_id', $studentId)
@@ -377,6 +399,7 @@ class FeeController extends Controller
 
         $summary['outstanding'] = max($totalAmount - $summary['total_paid'], 0);
 
+        // Ambil senarai payment — format tarikh dan return fields yang perlu je
         $payments = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
@@ -404,7 +427,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Build common treasurer query.
+     * Base query untuk bahagian treasurer.
+     * Join payments dengan students, users, dan tuition_fees sekali gus.
      */
     private function treasurerBaseQuery()
     {
@@ -415,7 +439,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Apply common treasurer filters.
+     * Apply filter carian dan kursus untuk treasurer.
+     * Boleh search by matric no, nama, atau tarikh submitted.
      */
     private function applyTreasurerFilters($query, Request $request)
     {
@@ -429,6 +454,7 @@ class FeeController extends Controller
             });
         }
 
+        // Filter by programme/kursus kalau ada
         if ($request->filled('course') && strtolower($request->course) !== 'all') {
             $query->where('students.programme', $request->course);
         }
@@ -437,7 +463,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Build public receipt URL.
+     * Generate URL awam untuk resit bayaran.
+     * Guna APP_URL + /storage/ + path — boleh terus akses via browser.
      */
     private function buildReceiptUrl(?string $receiptPath): ?string
     {
@@ -449,7 +476,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Treasurer pending payment list / dashboard
+     * Dashboard treasurer — senarai bayaran pending.
+     * Tunjuk summary (pending, approved, rejected) dan rekod ikut status.
      */
     public function getPendingPayments(Request $request)
     {
@@ -460,6 +488,7 @@ class FeeController extends Controller
             $request
         );
 
+        // Kira jumlah rekod ikut status untuk display kat dashboard
         $summary = [
             'pending_count' => (clone $summaryBase)
                 ->where('payments.status', 'Pending')
@@ -477,6 +506,7 @@ class FeeController extends Controller
             $request
         );
 
+        // Filter ikut status yang dipilih — kalau 'all' tunjuk semua
         if (!empty($status) && strtolower($status) !== 'all') {
             $recordsBase->where('payments.status', $status);
         }
@@ -505,7 +535,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Treasurer view one submitted payment
+     * Treasurer tengok detail satu payment.
+     * Tunjuk semua info student, payment, dan URL resit untuk semakan.
      */
     public function viewPayment($paymentId)
     {
@@ -554,13 +585,15 @@ class FeeController extends Controller
                     ? Carbon::parse($payment->created_at)->format('j M Y')
                     : '-'),
             'receipt_path' => $payment->receipt_path ?? null,
+            // Generate full URL untuk resit — treasurer boleh klik terus tengok
             'receipt_url' => $this->buildReceiptUrl($payment->receipt_path ?? null),
             'remarks' => $payment->remarks ?? null,
         ]);
     }
 
     /**
-     * Treasurer approve payment
+     * Treasurer approve payment student.
+     * Hanya boleh approve kalau status masih Pending.
      */
     public function approvePayment(Request $request, $paymentId)
     {
@@ -572,6 +605,7 @@ class FeeController extends Controller
             ], 404);
         }
 
+        // Pastikan payment masih Pending sebelum approve
         if (($payment->status ?? null) !== 'Pending') {
             return response()->json([
                 'message' => 'Only pending payments can be approved'
@@ -583,6 +617,7 @@ class FeeController extends Controller
             'updated_at' => now(),
         ];
 
+        // Simpan masa dan siapa yang verify — kalau column wujud
         if (Schema::hasColumn('payments', 'verified_at')) {
             $updateData['verified_at'] = now();
         }
@@ -603,7 +638,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Treasurer reject payment
+     * Treasurer reject payment student.
+     * Boleh masukkan remarks sebab kenapa ditolak — optional tapi digalakkan.
      */
     public function rejectPayment(Request $request, $paymentId)
     {
@@ -619,6 +655,7 @@ class FeeController extends Controller
             ], 404);
         }
 
+        // Sama macam approve — hanya boleh reject kalau masih Pending
         if (($payment->status ?? null) !== 'Pending') {
             return response()->json([
                 'message' => 'Only pending payments can be rejected'
@@ -627,7 +664,7 @@ class FeeController extends Controller
 
         $updateData = [
             'status' => 'Rejected',
-            'remarks' => $request->remarks,
+            'remarks' => $request->remarks, // Sebab penolakan disimpan kat sini
             'updated_at' => now(),
         ];
 
@@ -651,7 +688,8 @@ class FeeController extends Controller
     }
 
     /**
-     * Treasurer payment records
+     * Rekod semua payment — untuk treasurer tengok history lengkap.
+     * Ada summary (jumlah kutipan, count by status) dan senarai rekod.
      */
     public function getPaymentRecords(Request $request)
     {
@@ -662,6 +700,7 @@ class FeeController extends Controller
             $request
         );
 
+        // Kira semua summary stats untuk paparan atas page
         $summary = [
             'total_records' => (clone $summaryBase)->count(),
             'total_collected' => (clone $summaryBase)
@@ -683,6 +722,7 @@ class FeeController extends Controller
             $request
         );
 
+        // Filter ikut status — kalau 'all' tunjuk semua rekod
         if (!empty($status) && strtolower($status) !== 'all') {
             $recordsBase->where('payments.status', $status);
         }
