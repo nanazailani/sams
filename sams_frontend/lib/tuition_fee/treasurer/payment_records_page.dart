@@ -14,13 +14,17 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
   final TextEditingController _searchController = TextEditingController();
 
   bool isLoading = true;
+
+  // Filter status — All, Approved, atau Rejected
   String selectedStatus = 'All';
 
+  // Summary stats untuk kad atas
   int totalRecords = 0;
   double totalCollected = 0;
   int approvedCount = 0;
   int rejectedCount = 0;
 
+  // Data rekod dan pagination
   List records = [];
   int currentPage = 1;
   int lastPage = 1;
@@ -28,9 +32,12 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
   @override
   void initState() {
     super.initState();
+    // Load rekod payment masa page dibuka
     fetchRecords();
   }
 
+  // Fetch rekod payment dari API ikut status dan search yang dipilih.
+  // Support pagination — pass page number untuk navigate antara pages.
   Future<void> fetchRecords({int page = 1}) async {
     setState(() {
       isLoading = true;
@@ -38,6 +45,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
 
     try {
       final uri = Uri.parse(
+        // Untuk development local, uncomment line bawah:
         //'http://127.0.0.1:8000/api/tuition/treasurer/records'
         'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/records'
         '?status=$selectedStatus'
@@ -54,6 +62,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
 
       if (response.statusCode == 200) {
         setState(() {
+          // Parse summary stats — guna tryParse untuk elak crash kalau type lain
           totalRecords = int.tryParse(
                 (data['summary']['total_records'] ?? '0').toString(),
               ) ??
@@ -74,6 +83,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
               ) ??
               0;
 
+          // Extract rekod dan info pagination
           records = data['records']['data'] ?? [];
           currentPage = int.tryParse(
                 (data['records']['current_page'] ?? '1').toString(),
@@ -85,11 +95,13 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
               1;
         });
       } else {
+        // API error — tunjuk mesej dari response
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data['message']?.toString() ?? 'Failed to load records')),
         );
       }
     } catch (e) {
+      // Network error atau lain-lain
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -100,6 +112,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
     });
   }
 
+  // Return warna background badge status payment.
   Color statusBg(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -111,6 +124,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
     }
   }
 
+  // Return warna teks badge status payment.
   Color statusText(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -122,6 +136,8 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
     }
   }
 
+  // tunjuk nilai dan label.
+  // Digunakan untuk Total Records dan Total Collected.
   Widget _summaryCard(String value, String label, Color color) {
     return Expanded(
       child: Container(
@@ -135,6 +151,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Nilai utama — bold dengan warna ikut jenis
             Text(
               value,
               style: TextStyle(
@@ -157,6 +174,8 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
     );
   }
 
+  // Tab filter status — All, Approved, Rejected.
+  // Yang active ada underline bawah.
   Widget _tabItem(String title, String value, Color color) {
     final bool active = selectedStatus == value;
     return Expanded(
@@ -165,6 +184,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
           setState(() {
             selectedStatus = value;
           });
+          // Fetch semula bila tukar tab
           fetchRecords();
         },
         child: Column(
@@ -178,6 +198,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
               ),
             ),
             const SizedBox(height: 8),
+            // Underline — nampak kalau tab active je
             Container(
               height: 2.5,
               color: active ? color : Colors.transparent,
@@ -198,12 +219,14 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
       body: SafeArea(
         child: Column(
           children: [
+
+            // Header dengan button back
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
               decoration: const BoxDecoration(
                 color: primaryColor,
-                      ),
+              ),
               child: Row(
                 children: [
                   IconButton(
@@ -222,13 +245,18 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                 ],
               ),
             ),
+
             Expanded(
               child: isLoading
+                  // Loading spinner — tunjuk masa fetch data
                   ? const Center(child: CircularProgressIndicator())
                   : SingleChildScrollView(
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: [
+
+                          // Search Bar 
+                          // Cari by matric no atau tarikh — submit untuk trigger fetch
                           TextField(
                             controller: _searchController,
                             decoration: InputDecoration(
@@ -249,6 +277,9 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                             onSubmitted: (_) => fetchRecords(),
                           ),
                           const SizedBox(height: 12),
+
+                          // Kad Summary 
+                          // Total rekod dan jumlah kutipan yang dah approved
                           Row(
                             children: [
                               _summaryCard('$totalRecords', 'Total Records', primaryColor),
@@ -260,6 +291,9 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                             ],
                           ),
                           const SizedBox(height: 12),
+
+                          // Tab Filter Status 
+                          // Klik untuk filter rekod ikut status
                           Row(
                             children: [
                               _tabItem('All', 'All', primaryColor),
@@ -268,6 +302,8 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                             ],
                           ),
                           const SizedBox(height: 10),
+
+                          // Table Rekod Payment
                           Container(
                             width: double.infinity,
                             decoration: BoxDecoration(
@@ -277,6 +313,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                             ),
                             child: Column(
                               children: [
+                                // Header table
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                   child: const Row(
@@ -314,12 +351,15 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                                   ),
                                 ),
                                 const Divider(height: 1),
+
+                                // Kalau kosong — tunjuk mesej tiada rekod
                                 if (records.isEmpty)
                                   const Padding(
                                     padding: EdgeInsets.all(20),
                                     child: Text('No payment records found.'),
                                   )
                                 else
+                                  // Generate satu row untuk setiap rekod payment
                                   ...records.map((item) {
                                     final status = item['status']?.toString() ?? 'Pending';
                                     return Container(
@@ -331,6 +371,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                                       ),
                                       child: Row(
                                         children: [
+                                          // Tarikh submitted — ambil 10 char pertama (YYYY-MM-DD)
                                           Expanded(
                                             flex: 2,
                                             child: Text(
@@ -340,6 +381,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                                               style: const TextStyle(fontSize: 12),
                                             ),
                                           ),
+                                          // Matric no student
                                           Expanded(
                                             flex: 2,
                                             child: Text(
@@ -347,6 +389,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                                               style: const TextStyle(fontSize: 12),
                                             ),
                                           ),
+                                          // Jumlah bayaran
                                           Expanded(
                                             flex: 2,
                                             child: Text(
@@ -354,6 +397,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                                               style: const TextStyle(fontSize: 12),
                                             ),
                                           ),
+                                          // Badge status — Approved / Rejected / Pending
                                           Expanded(
                                             flex: 2,
                                             child: Align(
@@ -383,6 +427,9 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                             ),
                           ),
                           const SizedBox(height: 10),
+
+                          // Pagination
+                          // Tunjuk page semasa dan butang prev/next
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -392,6 +439,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                               ),
                               Row(
                                 children: [
+                                  // Butang Prev — disabled kalau dah kat page pertama
                                   ElevatedButton(
                                     onPressed: currentPage > 1
                                         ? () => fetchRecords(page: currentPage - 1)
@@ -407,6 +455,7 @@ class _PaymentRecordsPageState extends State<PaymentRecordsPage> {
                                     child: const Text('< Prev'),
                                   ),
                                   const SizedBox(width: 8),
+                                  // Butang Next — disabled kalau dah kat page terakhir
                                   ElevatedButton(
                                     onPressed: currentPage < lastPage
                                         ? () => fetchRecords(page: currentPage + 1)
