@@ -17,8 +17,10 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
   String _errorMessage = '';
-  String _selectedFilter = 'All';
+  String _selectedFilter = 'All'; // default tunjuk semua, filter ikut status bila user pilih
   List<Map<String, dynamic>> _claims = [];
+
+  // default value kalau API tak return summary (just in case backend rosak/lupa hantar)
   Map<String, dynamic> _summary = {
     'pending': 0,
     'approved_today': 0,
@@ -28,15 +30,16 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
   @override
   void initState() {
     super.initState();
-    _fetchClaims();
+    _fetchClaims(); // terus load data bila page bukak, takyah tunggu user buat apa2
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchController.dispose(); // jangan lupa dispose controller, leak kalau tak
     super.dispose();
   }
 
+  // fetch list claims dari API, support search + filter status sekali
   Future<void> _fetchClaims() async {
     setState(() {
       _isLoading = true;
@@ -47,6 +50,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
       final query = <String, String>{};
       final search = _searchController.text.trim();
 
+      // only hantar param search/status kalau ada value, takyah hantar empty string
       if (search.isNotEmpty) {
         query['search'] = search;
       }
@@ -64,6 +68,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
       final response = await http.get(uri);
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
 
+      // check mounted dulu sebab async call, takut widget dah dispose time response balik
       if (!mounted) return;
 
       if (response.statusCode == 200 && decoded['status'] == true) {
@@ -77,12 +82,14 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
           _isLoading = false;
         });
       } else {
+        // backend reject ke error ke, just tunjuk message dia kat user
         setState(() {
           _errorMessage = decoded['message']?.toString() ?? 'Failed to load claims';
           _isLoading = false;
         });
       }
     } catch (e) {
+      // network error / json parse error / apa2 — tangkap je semua kat sini
       if (!mounted) return;
       setState(() {
         _errorMessage = 'Error: $e';
@@ -91,17 +98,19 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     }
   }
 
+  // untuk approve/reject claim. status pass kat sini 'APPROVED' atau 'REJECTED'
   Future<void> _updateClaimStatus(int claimId, String status) async {
     try {
+      // amik reviewer id dari local storage, ni untuk track sape yg approve/reject claim ni
       final prefs = await SharedPreferences.getInstance();
       final reviewedBy = prefs.getInt('user_id');
 
       final response = await http.post(
         Uri.parse('https://darkgrey-lyrebird-505549.hostingersite.com/api/pusat-adab/credit-claims/$claimId/status'),
 
-
+        // dev/testing url, biar je comment ni kalau nak test local nanti
         // Uri.parse('http://10.0.2.2:8000/api/pusat-adab/credit-claims/$claimId/status'),
-          
+
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -116,6 +125,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
 
       if (!mounted) return;
 
+      // tunjuk snackbar apa2 pun jadi, success ke fail, biar user tau
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(decoded['message']?.toString() ?? 'Claim updated'),
@@ -123,6 +133,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
         ),
       );
 
+      // refresh list kalau berjaya update, supaya UI sync dengan backend
       if (response.statusCode == 200 && decoded['status'] == true) {
         _fetchClaims();
       }
@@ -137,10 +148,12 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     }
   }
 
+  // helper amik number dari summary map, kalau null/invalid default 0 je
   int _summaryNumber(String key) {
     return int.tryParse((_summary[key] ?? 0).toString()) ?? 0;
   }
 
+  // warna badge ikut status — urgent kena letak before default sebab default pun kuning gak
   Color _statusColor(String status) {
     switch (status.toUpperCase()) {
       case 'APPROVED':
@@ -150,10 +163,13 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
       case 'URGENT':
         return const Color(0xFFFF8A00);
       default:
-        return const Color(0xFFF2B500);
+        return const Color(0xFFF2B500); // pending
     }
   }
 
+  // logic ni untuk decide label apa nak tunjuk kat card
+  // backend simpan status 'IN PROGRESS' untuk yg belum approve/reject,
+  // so kalau priority dia 'urgent' kita override label jadi "Urgent" instead of "Pending"
   String _statusLabel(Map<String, dynamic> claim) {
     final priority = (claim['priority'] ?? '').toString().toUpperCase();
     final status = (claim['status'] ?? 'IN PROGRESS').toString().toUpperCase();
@@ -166,13 +182,15 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
       return 'Pending';
     }
 
+    // capitalize first letter je, e.g APPROVED -> Approved
     return status[0] + status.substring(1).toLowerCase();
   }
 
+  // format date jadi "18 Jun 2026" instead of raw ISO string dari API
   String _formatDate(String? rawDate) {
     if (rawDate == null || rawDate.isEmpty) return '--';
     final parsed = DateTime.tryParse(rawDate);
-    if (parsed == null) return rawDate;
+    if (parsed == null) return rawDate; // parse fail, return raw je daripada crash
     const months = [
       'Jan',
       'Feb',
@@ -190,6 +208,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     return '${parsed.day.toString().padLeft(2, '0')} ${months[parsed.month - 1]} ${parsed.year}';
   }
 
+  // convert 24hr time string (HH:mm) jadi format 12hr dengan AM/PM
   String _formatTime(String? rawTime) {
     if (rawTime == null || rawTime.isEmpty) return '--';
     final parts = rawTime.split(':');
@@ -198,10 +217,11 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     final minute = parts[1];
     final suffix = hour >= 12 ? 'PM' : 'AM';
     hour = hour % 12;
-    if (hour == 0) hour = 12;
+    if (hour == 0) hour = 12; // jam 0 (midnight) kena jadi 12, bukan 0
     return '${hour.toString().padLeft(2, '0')}:$minute $suffix';
   }
 
+  // header bar dengan back button + title, gradient purple ikut tema app
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
@@ -222,6 +242,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
               minHeight: 28,
             ),
             onPressed: () {
+              // check canPop dulu, takut crash kalau page ni root (takde page belakang)
               if (Navigator.canPop(context)) {
                 Navigator.pop(context);
               }
@@ -245,6 +266,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     );
   }
 
+  // search bar + dropdown filter + print report button
   Widget _buildToolbar() {
     return Column(
       children: [
@@ -255,7 +277,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
                 height: 40,
                 child: TextField(
                   controller: _searchController,
-                  onSubmitted: (_) => _fetchClaims(),
+                  onSubmitted: (_) => _fetchClaims(), // search bila tekan enter
                   decoration: InputDecoration(
                     hintText: 'Search by Name, Matric, activity',
                     hintStyle:
@@ -296,7 +318,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _selectedFilter = value);
-                    _fetchClaims();
+                    _fetchClaims(); // auto refetch lepas tukar filter
                   },
                 ),
               ),
@@ -309,6 +331,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
           height: 38,
           child: ElevatedButton.icon(
             onPressed: () {
+              // pass current loaded claims terus ke report page, takyah fetch lagi
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -336,6 +359,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     );
   }
 
+  // 3 kotak summary kat atas (pending / approved today / urgent)
   Widget _buildSummary() {
     return Row(
       children: [
@@ -377,10 +401,14 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
     );
   }
 
+  // card untuk satu claim — info student, module, attendance, & action buttons
   Widget _buildClaimCard(Map<String, dynamic> claim, int index) {
     final statusLabel = _statusLabel(claim);
     final statusColor = _statusColor(statusLabel);
     final status = (claim['status'] ?? '').toString().toUpperCase();
+
+    // button approve/reject only active kalau claim tu masih pending
+    // (dah approved/rejected takleh review balik)
     final canReview = status == 'IN PROGRESS';
     final start = _formatTime(claim['start_time']?.toString());
     final end = _formatTime(claim['end_time']?.toString());
@@ -399,6 +427,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
               children: [
                 CircleAvatar(
                   radius: 20,
+                  // selang seli warna avatar ikut index, just untuk variation visual
                   backgroundColor: index.isEven
                       ? const Color(0xFFE9C6D5)
                       : const Color(0xFFB8E4F2),
@@ -465,6 +494,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
                       ),
                       const SizedBox(height: 2),
                       Text(
+                        // default cats 2 & attendance 0% kalau API takde hantar value ni
                         'CATS : ${claim['cats'] ?? 2}        Result: ${claim['attendance_percentage'] ?? 0}%',
                         style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700),
                       ),
@@ -523,6 +553,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
                         children: [
                           Expanded(
                             child: _ActionButton(
+                              // kalau dah takleh review, tunjuk '--' je instead of button aktif
                               label: canReview ? 'Approve' : '--',
                               color: canReview
                                   ? const Color(0xFF00B050)
@@ -567,7 +598,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
             _buildHeader(),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: _fetchClaims,
+                onRefresh: _fetchClaims, // pull to refresh
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
                   children: [
@@ -575,6 +606,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
                     const SizedBox(height: 12),
                     _buildSummary(),
                     const SizedBox(height: 12),
+                    // priority: loading -> error -> empty -> baru list claims
                     if (_isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 90),
@@ -608,6 +640,7 @@ class _ApproveCreditPageState extends State<ApproveCreditPage> {
   }
 }
 
+// kad kecik untuk summary stats (pending / approved today / urgent)
 class _SummaryCard extends StatelessWidget {
   final int value;
   final String label;
@@ -657,10 +690,11 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+// button approve/reject kat dalam claim card, reusable je sebab dua-dua sama style
 class _ActionButton extends StatelessWidget {
   final String label;
   final Color color;
-  final VoidCallback? onTap;
+  final VoidCallback? onTap; // null = disabled (claim dah takleh diapprove/reject)
 
   const _ActionButton({
     required this.label,
@@ -676,7 +710,7 @@ class _ActionButton extends StatelessWidget {
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          disabledBackgroundColor: color,
+          disabledBackgroundColor: color, // warna sama walaupun disabled, just takleh tekan
           foregroundColor: Colors.white,
           disabledForegroundColor: Colors.white,
           elevation: 0,
