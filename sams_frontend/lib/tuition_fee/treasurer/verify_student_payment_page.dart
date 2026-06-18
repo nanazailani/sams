@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+// Page ni untuk treasurer verify payment student
 class VerifyStudentPaymentPage extends StatefulWidget {
   final int paymentId;
 
@@ -16,16 +17,17 @@ class VerifyStudentPaymentPage extends StatefulWidget {
 }
 
 class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
-  Map<String, dynamic>? payment;
+  Map<String, dynamic>? payment; // data payment dari API
   bool isLoading = true;
-  bool isProcessing = false;
+  bool isProcessing = false; // prevent double tap masa approve/reject
 
   @override
   void initState() {
     super.initState();
-    fetchPaymentDetail();
+    fetchPaymentDetail(); // terus fetch bila page open
   }
 
+  // Ambil detail payment guna paymentId yang dipass dari page sebelum
   Future<void> fetchPaymentDetail() async {
     setState(() {
       isLoading = true;
@@ -34,7 +36,9 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     try {
       final response = await http.get(
         Uri.parse(
+          // local testing
           //'http://127.0.0.1:8000/api/tuition/treasurer/payment/${widget.paymentId}',
+          // production - hostinger
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/payment/${widget.paymentId}',
         ),
         headers: {'Accept': 'application/json'},
@@ -44,7 +48,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
 
       if (response.statusCode == 200) {
         setState(() {
-          payment = data;
+          payment = data; // save data payment untuk display
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -52,6 +56,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
         );
       }
     } catch (e) {
+      // kalau takde internet ke, API down ke
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -62,17 +67,19 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     });
   }
 
+  // Background color untuk badge status
   Color statusBg(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
-        return const Color(0xFFE8F8EE);
+        return const Color(0xFFE8F8EE); // hijau muda
       case 'rejected':
-        return const Color(0xFFFFE6E6);
+        return const Color(0xFFFFE6E6); // merah muda
       default:
-        return const Color(0xFFFFF2CC);
+        return const Color(0xFFFFF2CC); // kuning - pending
     }
   }
 
+  // Text color untuk badge status
   Color statusText(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -80,10 +87,11 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       case 'rejected':
         return const Color(0xFFE85B5B);
       default:
-        return const Color(0xFFF4B400);
+        return const Color(0xFFF4B400); // pending = kuning
     }
   }
 
+  // Approve payment - terus update status jadi approved
   Future<void> approvePayment() async {
     setState(() {
       isProcessing = true;
@@ -92,7 +100,9 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     try {
       final response = await http.post(
         Uri.parse(
+          // local testing
           //'http://127.0.0.1:8000/api/tuition/treasurer/payment/${widget.paymentId}/approve',
+          // production
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/payment/${widget.paymentId}/approve',
         ),
         headers: {'Accept': 'application/json'},
@@ -104,7 +114,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data['message']?.toString() ?? 'Approved')),
         );
-        Navigator.pop(context, true);
+        Navigator.pop(context, true); // return true supaya page list boleh refresh
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data['message']?.toString() ?? 'Approve failed')),
@@ -121,9 +131,11 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     });
   }
 
+  // Reject payment - kena masuk remarks dulu baru boleh reject
   Future<void> rejectPayment() async {
     final controller = TextEditingController();
 
+    // popup untuk treasurer isi reason reject
     final remarks = await showDialog<String>(
       context: context,
       builder: (_) {
@@ -138,7 +150,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context), // cancel - tak jadi reject
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -150,6 +162,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       },
     );
 
+    // kalau user tekan cancel, remarks akan null - stop sini
     if (remarks == null) return;
 
     setState(() {
@@ -159,12 +172,14 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     try {
       final response = await http.post(
         Uri.parse(
+          // local testing
           //'http://127.0.0.1:8000/api/tuition/treasurer/payment/${widget.paymentId}/reject',
+          // production
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/treasurer/payment/${widget.paymentId}/reject',
         ),
         headers: {'Accept': 'application/json'},
         body: {
-          'remarks': remarks,
+          'remarks': remarks, // hantar remarks ke API
         },
       );
 
@@ -174,7 +189,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data['message']?.toString() ?? 'Rejected')),
         );
-        Navigator.pop(context, true);
+        Navigator.pop(context, true); // balik ke list, trigger refresh
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data['message']?.toString() ?? 'Reject failed')),
@@ -191,9 +206,11 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     });
   }
 
+  // Tunjuk receipt yang student upload - support image je buat masa ni
   void showReceipt() {
     final receiptUrl = payment?['receipt_url']?.toString();
 
+    // kalau takde receipt, inform user
     if (receiptUrl == null || receiptUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No uploaded receipt found')),
@@ -201,6 +218,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       return;
     }
 
+    // check extension - kalau image baru display, lain-lain tunjuk URL je
     final lower = receiptUrl.toLowerCase();
     final isImage = lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
@@ -213,7 +231,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
         content: isImage
             ? Image.network(
                 receiptUrl,
-                errorBuilder: (_, __, ___) => SelectableText(receiptUrl),
+                errorBuilder: (_, __, ___) => SelectableText(receiptUrl), // fallback kalau image fail load
               )
             : SelectableText(receiptUrl),
         actions: [
@@ -226,6 +244,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
     );
   }
 
+  // Helper widget untuk display info dalam format label : value
   Widget _infoRow(String label, String value, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
@@ -258,7 +277,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF22B8CF);
+    const primaryColor = Color(0xFF22B8CF); // cyan - consistent dengan theme app
     const bgColor = Color(0xFFF5F5F5);
 
     final currentStatus = payment?['status']?.toString() ?? 'Pending';
@@ -267,17 +286,18 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
       backgroundColor: bgColor,
       body: SafeArea(
         child: isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator()) // tunggu API response
             : SingleChildScrollView(
                 padding: const EdgeInsets.only(bottom: 20),
                 child: Column(
                   children: [
+                    // Header bar
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                       decoration: const BoxDecoration(
                         color: primaryColor,
-                        ),
+                      ),
                       child: Row(
                         children: [
                           IconButton(
@@ -300,6 +320,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: [
+                          // Card 1 - info student
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(14),
@@ -327,6 +348,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
                             ),
                           ),
                           const SizedBox(height: 14),
+                          // Card 2 - info payment + status + receipt
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(14),
@@ -353,6 +375,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
                                 ),
                                 _infoRow('Method', payment?['payment_method']?.toString() ?? '-'),
                                 _infoRow('Date Submitted', payment?['date_submitted']?.toString() ?? '-'),
+                                // status badge
                                 Row(
                                   children: [
                                     const Expanded(
@@ -379,6 +402,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
                                   ],
                                 ),
                                 const SizedBox(height: 14),
+                                // button view receipt
                                 SizedBox(
                                   width: double.infinity,
                                   height: 42,
@@ -404,12 +428,13 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
                             ),
                           ),
                           const SizedBox(height: 24),
+                          // Approve & Reject buttons - disable kalau dah bukan Pending
                           Row(
                             children: [
                               Expanded(
                                 child: ElevatedButton(
                                   onPressed: (isProcessing || currentStatus != 'Pending')
-                                      ? null
+                                      ? null // disable kalau tengah process atau dah approved/rejected
                                       : approvePayment,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: primaryColor,
@@ -429,7 +454,7 @@ class _VerifyStudentPaymentPageState extends State<VerifyStudentPaymentPage> {
                               Expanded(
                                 child: ElevatedButton(
                                   onPressed: (isProcessing || currentStatus != 'Pending')
-                                      ? null
+                                      ? null // sama - disable kalau dah processed
                                       : rejectPayment,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFF44336),
