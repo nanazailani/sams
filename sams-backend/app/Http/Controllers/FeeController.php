@@ -9,11 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 class FeeController extends Controller
 {
-    /**
-     * Resolve student ID dengan selamat.
-     * Boleh terima students.id atau users.id — dua-dua okay.
-     * Kalau tak jumpa, return null.
-     */
+    // Resolve student ID — boleh pass students.id atau users.id, dua-dua handle
     private function resolveStudentId($incomingStudentId): ?int
     {
         if (!$incomingStudentId) {
@@ -22,7 +18,7 @@ class FeeController extends Controller
 
         $incomingStudentId = (int) $incomingStudentId;
 
-        // Cuba cari terus guna students.id
+        // cuba cari guna students.id dulu
         $directStudentId = DB::table('students')
             ->where('id', $incomingStudentId)
             ->value('id');
@@ -31,7 +27,7 @@ class FeeController extends Controller
             return (int) $directStudentId;
         }
 
-        // Kalau tak jumpa, cuba guna users.id pula
+        // tak jumpa — cuba try guna users.id pula
         $studentByUserId = DB::table('students')
             ->where('user_id', $incomingStudentId)
             ->value('id');
@@ -40,14 +36,10 @@ class FeeController extends Controller
             return (int) $studentByUserId;
         }
 
-        // Langsung tak jumpa — return null
-        return null;
+        return null; // langsung tak jumpa
     }
 
-    /**
-     * Ambil rekod student lengkap dengan info dari users table sekali.
-     * Join dengan users sebab nama student ada kat sana.
-     */
+    // Ambil info student + nama sekali — nama ada kat users table, kena join
     private function getStudentRecord(int $studentId)
     {
         return DB::table('students')
@@ -65,10 +57,7 @@ class FeeController extends Controller
             ->first();
     }
 
-    /**
-     * Cari konfigurasi yuran berdasarkan programme student.
-     * Ambil yang paling baru (orderByDesc) kalau ada lebih dari satu.
-     */
+    // Cari fee config ikut programme — kalau ada lebih satu, ambil yang latest
     private function getFeeConfigForStudent($student)
     {
         if (!$student || empty($student->programme)) {
@@ -81,11 +70,7 @@ class FeeController extends Controller
             ->first();
     }
 
-    /**
-     * Kira jumlah bayaran berdasarkan status hostel student.
-     * Kalau student duduk hostel, tambah hostel fee sekali.
-     * Kalau tidak, yuran pengajian je.
-     */
+    // Kira total yuran — kalau student duduk hostel, kena tambah hostel fee sekali
     private function calculateTotalAmount($student, $fee): float
     {
         $tuitionFee = (float) ($fee->tuition_fee ?? 0);
@@ -96,26 +81,19 @@ class FeeController extends Controller
         return $isHostel ? ($tuitionFee + $hostelFee) : $tuitionFee;
     }
 
-    /**
-     * Dashboard student — paparan status yuran secara ringkas.
-     * Tunjuk berapa dah bayar, berapa lagi outstanding, completion percentage.
-     */
+    // Dashboard student — tunjuk berapa dah bayar, outstanding, percentage
     public function getStudentFeeStatus($studentId)
     {
         $studentId = $this->resolveStudentId($studentId);
 
         if (!$studentId) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $student = $this->getStudentRecord($studentId);
 
         if (!$student) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $fee = $this->getFeeConfigForStudent($student);
@@ -126,17 +104,16 @@ class FeeController extends Controller
             ], 404);
         }
 
-        // Kira jumlah keseluruhan yuran
         $totalAmount = $this->calculateTotalAmount($student, $fee);
 
-        // Jumlah yang dah approved je dikira sebagai dah bayar
+        // approved je dikira bayar — pending tak kira lagi
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
             ->where('status', 'Approved')
             ->sum('amount');
 
-        // Jumlah yang pending — belum disahkan lagi
+        // pending — dah submit tapi belum disahkan treasurer
         $pendingPaid = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
@@ -148,49 +125,42 @@ class FeeController extends Controller
             ? round(($approvedPaid / $totalAmount) * 100)
             : 0;
 
-        // Tentukan status keseluruhan — Paid, Partial, atau Unpaid
+        // status overall — Paid kalau dah settle, Partial kalau ada sikit, Unpaid kalau belum langsung
         $overallStatus = $remaining <= 0
             ? 'Paid'
             : ($approvedPaid > 0 ? 'Partial' : 'Unpaid');
 
         return response()->json([
-            'student_name' => $student->name ?? '-',
-            'matric_no' => $student->matric_no ?? '-',
-            'programme' => $student->programme ?? '-',
-            'semester' => ($fee->semester ?? '-') . ', ' . ($fee->session ?? '-'),
-            'total_fee' => (float) $totalAmount,
-            'amount_paid' => (float) $approvedPaid,
-            'pending_amount' => (float) $pendingPaid,
-            'remaining_balance' => (float) $remaining,
-            'deadline' => !empty($fee->deadline)
-                ? Carbon::parse($fee->deadline)->format('j M Y')
-                : '-',
+            'student_name'          => $student->name ?? '-',
+            'matric_no'             => $student->matric_no ?? '-',
+            'programme'             => $student->programme ?? '-',
+            'semester'              => ($fee->semester ?? '-') . ', ' . ($fee->session ?? '-'),
+            'total_fee'             => (float) $totalAmount,
+            'amount_paid'           => (float) $approvedPaid,
+            'pending_amount'        => (float) $pendingPaid,
+            'remaining_balance'     => (float) $remaining,
+            'deadline'              => !empty($fee->deadline)
+                                        ? Carbon::parse($fee->deadline)->format('j M Y')
+                                        : '-',
             'completion_percentage' => $completion,
-            'status' => $overallStatus,
-            'hostel' => (int) ($student->hostel ?? 0),
+            'status'                => $overallStatus,
+            'hostel'                => (int) ($student->hostel ?? 0),
         ]);
     }
 
-    /**
-     * Halaman detail yuran student.
-     * Lebih terperinci dari dashboard — tunjuk breakdown yuran pengajian vs hostel.
-     */
+    // Detail yuran — lebih terperinci, ada breakdown tuition vs hostel fee
     public function getFeeDetails($studentId)
     {
         $studentId = $this->resolveStudentId($studentId);
 
         if (!$studentId) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $student = $this->getStudentRecord($studentId);
 
         if (!$student) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $fee = $this->getFeeConfigForStudent($student);
@@ -218,59 +188,51 @@ class FeeController extends Controller
             ? 'Paid'
             : ($approvedPaid > 0 ? 'Partial' : 'Unpaid');
 
-        // Hostel fee hanya apply kalau student duduk hostel
+        // kalau tak duduk hostel, hostel fee = 0
         $hostelFeeApplied = ((int) ($student->hostel ?? 0) === 1)
             ? (float) ($fee->hostel_fee ?? 0)
             : 0.0;
 
         return response()->json([
-            'student_name' => $student->name ?? '-',
-            'matric_no' => $student->matric_no ?? '-',
-            'programme' => $student->programme ?? '-',
-            'semester' => $fee->semester ?? '-',
-            'session' => $fee->session ?? '-',
-            'tuition_fee' => (float) ($fee->tuition_fee ?? 0),
-            'hostel_fee' => $hostelFeeApplied,
-            'total_fee' => (float) $totalAmount,
-            'paid' => (float) $approvedPaid,
-            'outstanding' => (float) $remaining,
+            'student_name'          => $student->name ?? '-',
+            'matric_no'             => $student->matric_no ?? '-',
+            'programme'             => $student->programme ?? '-',
+            'semester'              => $fee->semester ?? '-',
+            'session'               => $fee->session ?? '-',
+            'tuition_fee'           => (float) ($fee->tuition_fee ?? 0),
+            'hostel_fee'            => $hostelFeeApplied,
+            'total_fee'             => (float) $totalAmount,
+            'paid'                  => (float) $approvedPaid,
+            'outstanding'           => (float) $remaining,
             'completion_percentage' => $completion,
-            'status' => $status,
-            'deadline' => !empty($fee->deadline)
-                ? Carbon::parse($fee->deadline)->format('j F Y')
-                : '-',
-            'hostel' => (int) ($student->hostel ?? 0),
+            'status'                => $status,
+            'deadline'              => !empty($fee->deadline)
+                                        ? Carbon::parse($fee->deadline)->format('j F Y')
+                                        : '-',
+            'hostel'                => (int) ($student->hostel ?? 0),
         ]);
     }
 
-    /**
-     * Student submit bayaran.
-     * Upload resit, validate amount, simpan rekod payment dalam DB.
-     * Status default = Pending — kena tunggu treasurer approve.
-     */
+    // Student submit payment — upload resit, validate, then save dengan status Pending
     public function submitPayment(Request $request)
     {
         $request->validate([
-            'student_id' => 'required|integer',
-            'amount' => 'required|numeric|min:1',
+            'student_id'     => 'required|integer',
+            'amount'         => 'required|numeric|min:1',
             'payment_method' => 'required|in:Online Banking,Credit/Debit Card,Other',
-            'receipt' => 'required|file|mimes:jpg,jpeg,png,pdf|max:4096',
+            'receipt'        => 'required|file|mimes:jpg,jpeg,png,pdf|max:4096',
         ]);
 
         $studentId = $this->resolveStudentId($request->student_id);
 
         if (!$studentId) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $student = $this->getStudentRecord($studentId);
 
         if (!$student) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $fee = $this->getFeeConfigForStudent($student);
@@ -283,7 +245,7 @@ class FeeController extends Controller
 
         $totalAmount = $this->calculateTotalAmount($student, $fee);
 
-        // Kira baki yang belum bayar berdasarkan approved payments je
+        // kira outstanding — approved je, pending tak masuk kira
         $approvedPaid = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
@@ -292,33 +254,32 @@ class FeeController extends Controller
 
         $remaining = max($totalAmount - $approvedPaid, 0);
 
-        // Tak boleh bayar lebih dari yang outstanding
+        // tak boleh bayar lebih dari yang outstanding
         if ($request->amount > $remaining) {
             return response()->json([
-                'message' => 'Payment amount exceeds outstanding balance',
+                'message'           => 'Payment amount exceeds outstanding balance',
                 'remaining_balance' => $remaining,
             ], 422);
         }
 
-        // Simpan resit terus ke public/storage supaya boleh diakses via URL
-        // Guna public_direct disk — save ke public/storage/payment_receipts/
+        // store resit ke public/storage — guna public_direct disk supaya accessible via URL
         $receiptPath = $request->file('receipt')->storeAs(
             'payment_receipts',
             uniqid() . '_' . time() . '.' . $request->file('receipt')->getClientOriginalExtension(),
             ['disk' => 'public_direct']
         );
 
-        // Prepare data untuk insert — check column wujud dulu sebelum masukkan
         $insertData = [
-            'student_id' => $studentId,
+            'student_id'     => $studentId,
             'tuition_fee_id' => $fee->id,
-            'amount' => $request->amount,
+            'amount'         => $request->amount,
             'payment_method' => $request->payment_method,
-            'status' => 'Pending',
-            'created_at' => now(),
-            'updated_at' => now(),
+            'status'         => 'Pending', // default pending — kena tunggu treasurer approve
+            'created_at'     => now(),
+            'updated_at'     => now(),
         ];
 
+        // check column wujud dulu sebelum insert — elak error kalau migration lain
         if (Schema::hasColumn('payments', 'receipt_path')) {
             $insertData['receipt_path'] = $receiptPath;
         }
@@ -334,33 +295,26 @@ class FeeController extends Controller
         DB::table('payments')->insert($insertData);
 
         return response()->json([
-            'message' => 'Payment submitted successfully',
-            'amount' => (float) $request->amount,
-            'status' => 'Pending',
+            'message'      => 'Payment submitted successfully',
+            'amount'       => (float) $request->amount,
+            'status'       => 'Pending',
             'receipt_path' => $receiptPath,
         ]);
     }
 
-    /**
-     * Sejarah pembayaran student.
-     * Return summary (jumlah bayar, outstanding) dan senarai semua payment.
-     */
+    // History payment student — return summary dan senarai semua transaksi
     public function getPaymentHistory($studentId)
     {
         $studentId = $this->resolveStudentId($studentId);
 
         if (!$studentId) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $student = $this->getStudentRecord($studentId);
 
         if (!$student) {
-            return response()->json([
-                'message' => 'Student not found'
-            ], 404);
+            return response()->json(['message' => 'Student not found'], 404);
         }
 
         $fee = $this->getFeeConfigForStudent($student);
@@ -373,25 +327,24 @@ class FeeController extends Controller
 
         $totalAmount = $this->calculateTotalAmount($student, $fee);
 
-        // Kira summary — berapa approved, pending, dan total semua
         $summary = [
             'total_paid' => DB::table('payments')
                 ->where('student_id', $studentId)
                 ->where('tuition_fee_id', $fee->id)
                 ->where('status', 'Approved')
                 ->sum('amount'),
-            'outstanding' => 0,
+            'outstanding'    => 0, // kira lepas dapat total_paid
             'approved_count' => DB::table('payments')
                 ->where('student_id', $studentId)
                 ->where('tuition_fee_id', $fee->id)
                 ->where('status', 'Approved')
                 ->count(),
-            'pending_count' => DB::table('payments')
+            'pending_count'  => DB::table('payments')
                 ->where('student_id', $studentId)
                 ->where('tuition_fee_id', $fee->id)
                 ->where('status', 'Pending')
                 ->count(),
-            'all_count' => DB::table('payments')
+            'all_count'      => DB::table('payments')
                 ->where('student_id', $studentId)
                 ->where('tuition_fee_id', $fee->id)
                 ->count(),
@@ -399,7 +352,7 @@ class FeeController extends Controller
 
         $summary['outstanding'] = max($totalAmount - $summary['total_paid'], 0);
 
-        // Ambil senarai payment — format tarikh dan return fields yang perlu je
+        // format tarikh dan ambil fields yang perlu je untuk display kat Flutter
         $payments = DB::table('payments')
             ->where('student_id', $studentId)
             ->where('tuition_fee_id', $fee->id)
@@ -408,28 +361,27 @@ class FeeController extends Controller
             ->get()
             ->map(function ($payment) {
                 return [
-                    'id' => $payment->id,
-                    'date' => !empty($payment->submitted_at)
+                    'id'           => $payment->id,
+                    'date'         => !empty($payment->submitted_at)
                         ? Carbon::parse($payment->submitted_at)->format('j M Y')
-                        : (!empty($payment->created_at) ? Carbon::parse($payment->created_at)->format('j M Y') : '-'),
-                    'amount' => (float) ($payment->amount ?? 0),
-                    'method' => $payment->payment_method ?? '-',
-                    'status' => $payment->status ?? 'Pending',
+                        : (!empty($payment->created_at)
+                            ? Carbon::parse($payment->created_at)->format('j M Y')
+                            : '-'),
+                    'amount'       => (float) ($payment->amount ?? 0),
+                    'method'       => $payment->payment_method ?? '-',
+                    'status'       => $payment->status ?? 'Pending',
                     'receipt_path' => $payment->receipt_path ?? null,
                 ];
             });
 
         return response()->json([
             'semester' => ($fee->semester ?? '-') . ', ' . ($fee->session ?? '-'),
-            'summary' => $summary,
+            'summary'  => $summary,
             'payments' => $payments,
         ]);
     }
 
-    /**
-     * Base query untuk bahagian treasurer.
-     * Join payments dengan students, users, dan tuition_fees sekali gus.
-     */
+    // Base query untuk treasurer — join semua table yang perlu sekali gus
     private function treasurerBaseQuery()
     {
         return DB::table('payments')
@@ -438,15 +390,13 @@ class FeeController extends Controller
             ->leftJoin('tuition_fees', 'payments.tuition_fee_id', '=', 'tuition_fees.id');
     }
 
-    /**
-     * Apply filter carian dan kursus untuk treasurer.
-     * Boleh search by matric no, nama, atau tarikh submitted.
-     */
+    // Apply filter search dan kursus — reuse untuk summary dan records
     private function applyTreasurerFilters($query, Request $request)
     {
         if ($request->filled('search')) {
             $search = trim($request->search);
 
+            // boleh search by matric, nama, atau tarikh submitted
             $query->where(function ($q) use ($search) {
                 $q->where('students.matric_no', 'like', '%' . $search . '%')
                     ->orWhere('users.name', 'like', '%' . $search . '%')
@@ -454,7 +404,6 @@ class FeeController extends Controller
             });
         }
 
-        // Filter by programme/kursus kalau ada
         if ($request->filled('course') && strtolower($request->course) !== 'all') {
             $query->where('students.programme', $request->course);
         }
@@ -462,10 +411,7 @@ class FeeController extends Controller
         return $query;
     }
 
-    /**
-     * Generate URL awam untuk resit bayaran.
-     * Guna APP_URL + /storage/ + path — boleh terus akses via browser.
-     */
+    // Generate URL resit yang boleh akses terus via browser
     private function buildReceiptUrl(?string $receiptPath): ?string
     {
         if (!$receiptPath) {
@@ -475,10 +421,7 @@ class FeeController extends Controller
         return url('storage/' . $receiptPath);
     }
 
-    /**
-     * Dashboard treasurer — senarai bayaran pending.
-     * Tunjuk summary (pending, approved, rejected) dan rekod ikut status.
-     */
+    // Dashboard treasurer — senarai payment pending + summary count by status
     public function getPendingPayments(Request $request)
     {
         $status = $request->get('status', 'Pending');
@@ -488,17 +431,11 @@ class FeeController extends Controller
             $request
         );
 
-        // Kira jumlah rekod ikut status untuk display kat dashboard
+        // count untuk semua status — display kat tab atas
         $summary = [
-            'pending_count' => (clone $summaryBase)
-                ->where('payments.status', 'Pending')
-                ->count(),
-            'approved_count' => (clone $summaryBase)
-                ->where('payments.status', 'Approved')
-                ->count(),
-            'rejected_count' => (clone $summaryBase)
-                ->where('payments.status', 'Rejected')
-                ->count(),
+            'pending_count'  => (clone $summaryBase)->where('payments.status', 'Pending')->count(),
+            'approved_count' => (clone $summaryBase)->where('payments.status', 'Approved')->count(),
+            'rejected_count' => (clone $summaryBase)->where('payments.status', 'Rejected')->count(),
         ];
 
         $recordsBase = $this->applyTreasurerFilters(
@@ -506,7 +443,7 @@ class FeeController extends Controller
             $request
         );
 
-        // Filter ikut status yang dipilih — kalau 'all' tunjuk semua
+        // kalau 'all' — tunjuk semua, kalau ada status specific — filter
         if (!empty($status) && strtolower($status) !== 'all') {
             $recordsBase->where('payments.status', $status);
         }
@@ -534,10 +471,7 @@ class FeeController extends Controller
         ]);
     }
 
-    /**
-     * Treasurer tengok detail satu payment.
-     * Tunjuk semua info student, payment, dan URL resit untuk semakan.
-     */
+    // Treasurer tengok detail satu payment — semua info student + resit ada kat sini
     public function viewPayment($paymentId)
     {
         $payment = DB::table('payments')
@@ -564,48 +498,40 @@ class FeeController extends Controller
             ->first();
 
         if (!$payment) {
-            return response()->json([
-                'message' => 'Payment not found'
-            ], 404);
+            return response()->json(['message' => 'Payment not found'], 404);
         }
 
         return response()->json([
-            'payment_id' => $payment->id,
-            'student_id' => $payment->student_id,
-            'matric_no' => $payment->matric_no,
-            'full_name' => $payment->name,
-            'programme' => $payment->programme,
-            'semester' => ($payment->semester ?? '-') . ', ' . ($payment->session ?? '-'),
-            'amount' => (float) ($payment->amount ?? 0),
+            'payment_id'     => $payment->id,
+            'student_id'     => $payment->student_id,
+            'matric_no'      => $payment->matric_no,
+            'full_name'      => $payment->name,
+            'programme'      => $payment->programme,
+            'semester'       => ($payment->semester ?? '-') . ', ' . ($payment->session ?? '-'),
+            'amount'         => (float) ($payment->amount ?? 0),
             'payment_method' => $payment->payment_method ?? '-',
-            'status' => $payment->status ?? '-',
+            'status'         => $payment->status ?? '-',
             'date_submitted' => !empty($payment->submitted_at)
                 ? Carbon::parse($payment->submitted_at)->format('j M Y')
                 : (!empty($payment->created_at)
                     ? Carbon::parse($payment->created_at)->format('j M Y')
                     : '-'),
-            'receipt_path' => $payment->receipt_path ?? null,
-            // Generate full URL untuk resit — treasurer boleh klik terus tengok
-            'receipt_url' => $this->buildReceiptUrl($payment->receipt_path ?? null),
-            'remarks' => $payment->remarks ?? null,
+            'receipt_path'   => $payment->receipt_path ?? null,
+            'receipt_url'    => $this->buildReceiptUrl($payment->receipt_path ?? null), // full URL untuk treasurer tengok resit
+            'remarks'        => $payment->remarks ?? null,
         ]);
     }
 
-    /**
-     * Treasurer approve payment student.
-     * Hanya boleh approve kalau status masih Pending.
-     */
+    // Treasurer approve payment — hanya boleh kalau masih Pending
     public function approvePayment(Request $request, $paymentId)
     {
         $payment = DB::table('payments')->where('id', $paymentId)->first();
 
         if (!$payment) {
-            return response()->json([
-                'message' => 'Payment not found'
-            ], 404);
+            return response()->json(['message' => 'Payment not found'], 404);
         }
 
-        // Pastikan payment masih Pending sebelum approve
+        // double check — kalau dah approved/rejected, tak boleh buat lagi
         if (($payment->status ?? null) !== 'Pending') {
             return response()->json([
                 'message' => 'Only pending payments can be approved'
@@ -613,11 +539,11 @@ class FeeController extends Controller
         }
 
         $updateData = [
-            'status' => 'Approved',
+            'status'     => 'Approved',
             'updated_at' => now(),
         ];
 
-        // Simpan masa dan siapa yang verify — kalau column wujud
+        // save masa dan siapa yang verify — column ni optional, check dulu
         if (Schema::hasColumn('payments', 'verified_at')) {
             $updateData['verified_at'] = now();
         }
@@ -626,21 +552,16 @@ class FeeController extends Controller
             $updateData['verified_by'] = optional($request->user())->id;
         }
 
-        DB::table('payments')
-            ->where('id', $paymentId)
-            ->update($updateData);
+        DB::table('payments')->where('id', $paymentId)->update($updateData);
 
         return response()->json([
-            'message' => 'Payment approved successfully',
+            'message'    => 'Payment approved successfully',
             'payment_id' => $paymentId,
-            'status' => 'Approved',
+            'status'     => 'Approved',
         ]);
     }
 
-    /**
-     * Treasurer reject payment student.
-     * Boleh masukkan remarks sebab kenapa ditolak — optional tapi digalakkan.
-     */
+    // Treasurer reject payment — kena ada remarks, tapi optional (student nak tau kenapa ditolak)
     public function rejectPayment(Request $request, $paymentId)
     {
         $request->validate([
@@ -650,12 +571,10 @@ class FeeController extends Controller
         $payment = DB::table('payments')->where('id', $paymentId)->first();
 
         if (!$payment) {
-            return response()->json([
-                'message' => 'Payment not found'
-            ], 404);
+            return response()->json(['message' => 'Payment not found'], 404);
         }
 
-        // Sama macam approve — hanya boleh reject kalau masih Pending
+        // sama macam approve — status kena Pending dulu
         if (($payment->status ?? null) !== 'Pending') {
             return response()->json([
                 'message' => 'Only pending payments can be rejected'
@@ -663,8 +582,8 @@ class FeeController extends Controller
         }
 
         $updateData = [
-            'status' => 'Rejected',
-            'remarks' => $request->remarks, // Sebab penolakan disimpan kat sini
+            'status'     => 'Rejected',
+            'remarks'    => $request->remarks, // sebab ditolak — student boleh tengok kat history
             'updated_at' => now(),
         ];
 
@@ -676,21 +595,16 @@ class FeeController extends Controller
             $updateData['verified_by'] = optional($request->user())->id;
         }
 
-        DB::table('payments')
-            ->where('id', $paymentId)
-            ->update($updateData);
+        DB::table('payments')->where('id', $paymentId)->update($updateData);
 
         return response()->json([
-            'message' => 'Payment rejected successfully',
+            'message'    => 'Payment rejected successfully',
             'payment_id' => $paymentId,
-            'status' => 'Rejected',
+            'status'     => 'Rejected',
         ]);
     }
 
-    /**
-     * Rekod semua payment — untuk treasurer tengok history lengkap.
-     * Ada summary (jumlah kutipan, count by status) dan senarai rekod.
-     */
+    // Semua rekod payment — untuk treasurer tengok history lengkap dengan summary stats
     public function getPaymentRecords(Request $request)
     {
         $status = $request->get('status', 'All');
@@ -700,21 +614,13 @@ class FeeController extends Controller
             $request
         );
 
-        // Kira semua summary stats untuk paparan atas page
+        // stats untuk display kat header page
         $summary = [
-            'total_records' => (clone $summaryBase)->count(),
-            'total_collected' => (clone $summaryBase)
-                ->where('payments.status', 'Approved')
-                ->sum('payments.amount'),
-            'approved_count' => (clone $summaryBase)
-                ->where('payments.status', 'Approved')
-                ->count(),
-            'rejected_count' => (clone $summaryBase)
-                ->where('payments.status', 'Rejected')
-                ->count(),
-            'pending_count' => (clone $summaryBase)
-                ->where('payments.status', 'Pending')
-                ->count(),
+            'total_records'   => (clone $summaryBase)->count(),
+            'total_collected' => (clone $summaryBase)->where('payments.status', 'Approved')->sum('payments.amount'),
+            'approved_count'  => (clone $summaryBase)->where('payments.status', 'Approved')->count(),
+            'rejected_count'  => (clone $summaryBase)->where('payments.status', 'Rejected')->count(),
+            'pending_count'   => (clone $summaryBase)->where('payments.status', 'Pending')->count(),
         ];
 
         $recordsBase = $this->applyTreasurerFilters(
@@ -722,7 +628,6 @@ class FeeController extends Controller
             $request
         );
 
-        // Filter ikut status — kalau 'all' tunjuk semua rekod
         if (!empty($status) && strtolower($status) !== 'all') {
             $recordsBase->where('payments.status', $status);
         }
