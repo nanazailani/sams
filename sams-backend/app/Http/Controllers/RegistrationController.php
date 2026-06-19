@@ -781,18 +781,25 @@ class RegistrationController extends Controller
     }
 
     //change the day name to short lowercase format
+    //cth: monday - mon
     private function normalizedTimetableDay($day): string
     {
         return strtolower(substr(trim((string) $day), 0, 3));
     }
 
     //remove space and use same time format
+    //buang space dan jadikan huruf kecil.
+    //cth: " 09:00 AM - 10:00 AM " -> "09:00am-10:00am"
+    //"9:00 am - 10:00 am"    -> "9:00am-10:00am"
     private function normalizedTimetableTime($time): string
     {
         return preg_replace('/\s+/', '', strtolower(trim((string) $time)));
     }
 
     //change time into minute
+    //tukar range masa kepada bentuk nombor minit.
+    //cth; "9:00 am - 10:30 am"
+    //'start' => 540, ; 'end' => 630
     private function timetableTimeRange($time): ?array
     {
         $time = strtolower(trim((string) $time));
@@ -1079,7 +1086,7 @@ class RegistrationController extends Controller
         return $sectionPrefix === $tutorialPrefix;
     }
 
-    
+    //utk ambil nombor dpn nama section; cth: 01A jdi 01
     private function sectionNumericPrefix(?string $value): string
     {
         $value = trim((string) ($value ?? ''));
@@ -1090,6 +1097,7 @@ class RegistrationController extends Controller
         return str_pad((string) ((int) $matches[1]), 2, '0', STR_PAD_LEFT);
     }
 
+    //kira brapa ramai student yg register untuk subject/section tertentu
     private function registeredSlotCount(int $subjectId, string $section, string $mode): int
     {
         if (
@@ -1119,6 +1127,8 @@ class RegistrationController extends Controller
 
         return $query->count();
     }
+
+    //utk ambil list section bagi subject tertentu
     public function getSubjectSections(Request $request, $subjectId)
     {
         $type = $request->query('type', 'lecture');
