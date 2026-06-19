@@ -16,6 +16,7 @@ class PaymentHistoryPage extends StatefulWidget {
 }
 
 class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
+  // Data history payment dari API
   Map<String, dynamic>? data;
   bool isLoading = true;
   String error = '';
@@ -23,13 +24,17 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
   @override
   void initState() {
     super.initState();
+    // Terus fetch history masa page dibuka
     fetchPaymentHistory();
   }
 
+  // Fetch senarai semua payment student — approved, pending, rejected.
+  // Return summary dan list payment ikut semester semasa.
   Future<void> fetchPaymentHistory() async {
     try {
       final response = await http.get(
         Uri.parse(
+          // Untuk development local, uncomment line bawah:
           //'http://127.0.0.1:8000/api/tuition/student/${widget.studentId}/history',
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/${widget.studentId}/history',
         ),
@@ -53,6 +58,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
         });
       }
     } catch (e) {
+      // Kemungkinan no internet atau server down
       if (!mounted) return;
       setState(() {
         error = 'Unable to connect to server: $e';
@@ -61,12 +67,14 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
     }
   }
 
+  // Format angka kepada 2 decimal places untuk display duit.
   String formatMoney(dynamic value) {
     final number =
         (value is num) ? value.toDouble() : double.tryParse(value.toString()) ?? 0.0;
     return number.toStringAsFixed(2);
   }
 
+  // Return warna teks badge ikut status payment.
   Color getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -79,6 +87,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
     }
   }
 
+  // Return warna background badge ikut status payment.
   Color getStatusBg(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -99,6 +108,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
     const Color greenText = Color(0xFF00C853);
     const Color redText = Color(0xFFE53935);
 
+    // Tunjuk loading spinner sambil tunggu data
     if (isLoading) {
       return const Scaffold(
         backgroundColor: bgColor,
@@ -106,6 +116,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
       );
     }
 
+    // Kalau ada error, tunjuk mesej — jangan crash app
     if (error.isNotEmpty) {
       return Scaffold(
         backgroundColor: bgColor,
@@ -126,6 +137,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
       );
     }
 
+    // Extract data dari response — fallback kalau null
     final semester = data?['semester']?.toString() ?? '-';
     final summary = data?['summary'] as Map<String, dynamic>? ?? {};
     final payments = (data?['payments'] as List?) ?? [];
@@ -137,6 +149,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
       backgroundColor: bgColor,
       body: SafeArea(
         child: RefreshIndicator(
+          // Pull-to-refresh untuk reload history terkini
           onRefresh: fetchPaymentHistory,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -144,6 +157,8 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+
+                // Header dengan button back 
                 Container(
                   height: 92,
                   width: double.infinity,
@@ -170,15 +185,21 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Chip Semester 
+                // Tunjuk semester semasa sebagai label kecil
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 22),
                   child: _SemesterChip(text: semester),
                 ),
                 const SizedBox(height: 16),
+
+                //  Total Paid & Outstanding
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 22),
                   child: Row(
                     children: [
+                      // Jumlah yang dah approved dan dibayar
                       Expanded(
                         child: _InfoCard(
                           value: 'RM ${formatMoney(totalPaid)}',
@@ -187,6 +208,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                         ),
                       ),
                       const SizedBox(width: 16),
+                      // Baki yang still perlu dibayar
                       Expanded(
                         child: _InfoCard(
                           value: 'RM ${formatMoney(outstanding)}',
@@ -198,6 +220,8 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Table Senarai Payment 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 22),
                   child: Container(
@@ -209,6 +233,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: payments.isEmpty
+                        // Kalau takde history langsung, tunjuk mesej kosong
                         ? const Padding(
                             padding: EdgeInsets.all(20),
                             child: Center(
@@ -217,6 +242,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                           )
                         : Column(
                             children: [
+                              // Header table
                               const Row(
                                 children: [
                                   Expanded(
@@ -261,6 +287,8 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                               const SizedBox(height: 12),
                               const Divider(height: 1),
                               const SizedBox(height: 12),
+
+                              // Generate satu row untuk setiap payment
                               ...List.generate(payments.length, (index) {
                                 final item =
                                     payments[index] as Map<String, dynamic>;
@@ -271,13 +299,13 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
                                   children: [
                                     _HistoryRow(
                                       date: item['date']?.toString() ?? '-',
-                                      amount:
-                                          'RM ${formatMoney(item['amount'] ?? 0)}',
+                                      amount: 'RM ${formatMoney(item['amount'] ?? 0)}',
                                       method: item['method']?.toString() ?? '-',
                                       status: status.toUpperCase(),
                                       statusColor: getStatusColor(status),
                                       statusBg: getStatusBg(status),
                                     ),
+                                    // Divider antara rows — kecuali row terakhir
                                     if (index != payments.length - 1)
                                       const Divider(height: 20),
                                   ],
@@ -296,6 +324,7 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
   }
 }
 
+// small chip untuk tunjuk nama semester semasa.
 class _SemesterChip extends StatelessWidget {
   final String text;
 
@@ -321,6 +350,8 @@ class _SemesterChip extends StatelessWidget {
   }
 }
 
+//  simple card — tunjuk nilai (RM) dan label kecil kat bawah.
+// untuk Total Paid dan Outstanding.
 class _InfoCard extends StatelessWidget {
   final String value;
   final String label;
@@ -344,6 +375,7 @@ class _InfoCard extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Nilai RM — warna ikut jenis (hijau untuk paid, merah untuk outstanding)
           Text(
             value,
             style: TextStyle(
@@ -360,6 +392,8 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
+// Satu baris dalam table history payment.
+// Tunjuk tarikh, jumlah, payment method, and badge status.
 class _HistoryRow extends StatelessWidget {
   final String date;
   final String amount;
@@ -381,9 +415,13 @@ class _HistoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
+        // Tarikh payment disubmit
         Expanded(child: Text(date, style: const TextStyle(fontSize: 15))),
+        // Jumlah yang dibayar
         Expanded(child: Text(amount, style: const TextStyle(fontSize: 15))),
+        // payment method — Online Banking, Card, dll
         Expanded(child: Text(method, style: const TextStyle(fontSize: 15))),
+        // Badge status — Approved / Pending / Rejected
         Expanded(
           child: Align(
             alignment: Alignment.centerRight,

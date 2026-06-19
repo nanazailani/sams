@@ -15,6 +15,7 @@ class DashboardPage extends StatefulWidget {
 
 class _TreasurerFeeDashboardPageState
     extends State<DashboardPage> {
+  // Warna-warna yang digunakan throughout page ni
   static const Color primaryColor = Color(0xFF26BCD3);
   static const Color bgColor = Color(0xFFF4F4F4);
   static const Color borderColor = Color(0xFFB9C0CC);
@@ -22,26 +23,35 @@ class _TreasurerFeeDashboardPageState
   static const Color approvedColor = Color(0xFF00B85C);
   static const Color rejectedColor = Color(0xFFE53935);
 
+  // Base URL API — tukar ke localhost kalau nak test local
   static const String _baseUrl =
       'https://darkgrey-lyrebird-505549.hostingersite.com/api';
 
   final TextEditingController _searchController = TextEditingController();
 
+  // Senarai payment yang diload dari API
   List<dynamic> _allPayments = [];
   bool _isLoading = true;
+
+  // Tab yang aktif sekarang — Pending, Approved, atau Rejected
   String _selectedTab = 'Pending';
+
+  // Filter dropdown — course dan batch
   String? _selectedCourse;
   String? _selectedBatch;
+
+  // Summary count untuk stat cards atas
   Map<String, dynamic> _summary = {
     'pending_count': 0,
     'approved_count': 0,
     'rejected_count': 0,
   };
 
-  // --- Lock state ---
+  // State untuk Week 5 Lock
   bool _isLocked = false;
   bool _isLockLoading = false;
 
+  // Pilih filter course dan batch
   final List<String> _courseOptions = [
     'All',
     'BCS - Software Engineering',
@@ -59,8 +69,9 @@ class _TreasurerFeeDashboardPageState
   @override
   void initState() {
     super.initState();
+    // Load payment dan lock status masa page dibuka
     _fetchPendingPayments();
-    _fetchLockStatus(); // check current lock state on load
+    _fetchLockStatus();
   }
 
   @override
@@ -69,8 +80,10 @@ class _TreasurerFeeDashboardPageState
     super.dispose();
   }
 
-  // --- Lock methods ---
+  // Fungsi Lock / Unlock Akses Student 
 
+  // Check status lock semasa dari API.
+  // Digunakan untuk set state awal butang lock/unlock.
   Future<void> _fetchLockStatus() async {
     try {
       final response = await http
@@ -88,6 +101,9 @@ class _TreasurerFeeDashboardPageState
     }
   }
 
+  // Toggle lock/unlock akses student.
+  // Kalau locked, unlock — kalau unlocked, lock.
+  // Tunjuk mesej result lepas API response.
   Future<void> _toggleLock() async {
     setState(() => _isLockLoading = true);
 
@@ -113,8 +129,10 @@ class _TreasurerFeeDashboardPageState
     }
   }
 
-  // --- Payment methods ---
+  // Payment
 
+  // Fetch senarai payment dari API ikut tab dan filter yang dipilih.
+  // Kalau ada search text, hantar sekali dalam query params.
   Future<void> _fetchPendingPayments() async {
     setState(() {
       _isLoading = true;
@@ -123,10 +141,12 @@ class _TreasurerFeeDashboardPageState
     try {
       final queryParams = <String, String>{};
 
+      // Tambah search query kalau ada
       if (_searchController.text.trim().isNotEmpty) {
         queryParams['search'] = _searchController.text.trim();
       }
 
+      // Filter by status — Pending je default, lain kena pass explicitly
       if (_selectedTab != 'Pending') {
         queryParams['status'] = _selectedTab;
       }
@@ -142,6 +162,7 @@ class _TreasurerFeeDashboardPageState
 
         setState(() {
           _summary = Map<String, dynamic>.from(decoded['summary'] ?? {});
+          // Handle sama ada response dalam format paginate atau biasa
           _allPayments = records is Map
               ? (records['data'] as List? ?? [])
               : (decoded['data'] as List? ?? []);
@@ -158,6 +179,8 @@ class _TreasurerFeeDashboardPageState
     }
   }
 
+  // Filter payment secara local — search, course, dan batch.
+  // Ni untuk search yang tak perlu hit API semula.
   List<dynamic> get _filteredPayments {
     return _allPayments.where((item) {
       final matric = (item['matric_no'] ?? '').toString().toLowerCase();
@@ -165,10 +188,12 @@ class _TreasurerFeeDashboardPageState
       final programme = (item['programme'] ?? '').toString().toLowerCase();
       final search = _searchController.text.trim().toLowerCase();
 
+      // Match search — by matric no or nama
       final matchesSearch = search.isEmpty ||
           matric.contains(search) ||
           name.contains(search);
 
+      // Match course/programme — case-insensitive partial match
       final selectedCourse = (_selectedCourse ?? '').toLowerCase();
       final matchesCourse = _selectedCourse == null ||
           _selectedCourse == 'All' ||
@@ -176,6 +201,7 @@ class _TreasurerFeeDashboardPageState
           selectedCourse.contains(programme) ||
           programme.contains(selectedCourse);
 
+      // Match batch — guna 2 digit terakhir tahun untuk compare dengan matric
       final batchText =
           '${item['semester'] ?? ''} ${item['session'] ?? ''} ${item['matric_no'] ?? ''}'
               .toString();
@@ -191,6 +217,7 @@ class _TreasurerFeeDashboardPageState
     }).toList();
   }
 
+  // Helper untuk parse count dari summary map — handle null dan type mismatch.
   int _summaryCount(String key) {
     return int.tryParse((_summary[key] ?? 0).toString()) ?? 0;
   }
@@ -199,6 +226,7 @@ class _TreasurerFeeDashboardPageState
   int get _approvedCount => _summaryCount('approved_count');
   int get _rejectedCount => _summaryCount('rejected_count');
 
+  // Logout — clear semua SharedPreferences dan balik ke login page.
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
@@ -210,6 +238,7 @@ class _TreasurerFeeDashboardPageState
     );
   }
 
+  // Tunjuk snackbar mesej — used untuk success dan error.
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -217,6 +246,7 @@ class _TreasurerFeeDashboardPageState
     );
   }
 
+  // Return warna background badge status payment.
   Color _statusBg(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -228,6 +258,7 @@ class _TreasurerFeeDashboardPageState
     }
   }
 
+  // Return warna teks badge status payment.
   Color _statusText(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
@@ -239,8 +270,11 @@ class _TreasurerFeeDashboardPageState
     }
   }
 
-  // --- Lock button widget ---
+  // Widget Butang Lock
 
+  // Button untuk lock/unlock akses student.
+  // Hijau = locked (akses disekat), Merah = unlocked (boleh akses).
+  // Tunjuk spinner semasa proses API sedang berlaku.
   Widget _buildLockButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -270,6 +304,7 @@ class _TreasurerFeeDashboardPageState
             ),
           ),
           style: ElevatedButton.styleFrom(
+            // Hijau kalau locked, merah kalau unlocked
             backgroundColor: _isLocked ? Colors.green : Colors.red,
             foregroundColor: Colors.white,
             elevation: 0,
@@ -290,6 +325,7 @@ class _TreasurerFeeDashboardPageState
       backgroundColor: bgColor,
       body: SafeArea(
         child: RefreshIndicator(
+          // Pull-to-refresh untuk reload latest payment
           onRefresh: _fetchPendingPayments,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -297,7 +333,8 @@ class _TreasurerFeeDashboardPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
+
+                // Header dengan butang logout
                 Container(
                   height: 95,
                   width: double.infinity,
@@ -317,6 +354,7 @@ class _TreasurerFeeDashboardPageState
                           ),
                         ),
                       ),
+                      // Button logout — clear session dan balik login
                       IconButton(
                         onPressed: _logout,
                         icon: const Icon(Icons.logout, color: Colors.white),
@@ -326,17 +364,19 @@ class _TreasurerFeeDashboardPageState
                   ),
                 ),
                 const SizedBox(height: 22),
+
+                // Chip current semester
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: _SemesterChip(text: 'Semester 2, 2025/2026'),
                 ),
                 const SizedBox(height: 18),
 
-                // ── LOCK BUTTON ──
+                // Button Lock / Unlock Akses 
                 _buildLockButton(),
                 const SizedBox(height: 18),
 
-                // Stat cards
+                // Stat Cards — Pending, Approved, Rejected 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -369,7 +409,8 @@ class _TreasurerFeeDashboardPageState
                 ),
                 const SizedBox(height: 18),
 
-                // Search
+                // Search Bar 
+                // Cari by matric no — submit untuk trigger fetch API
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: TextField(
@@ -397,11 +438,12 @@ class _TreasurerFeeDashboardPageState
                 ),
                 const SizedBox(height: 12),
 
-                // Dropdowns
+                // Dropdown Filter Course & Batch
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
                     children: [
+                      // Filter by programme/kursus
                       Expanded(
                         child: _DropdownBox(
                           hint: 'Course',
@@ -416,6 +458,7 @@ class _TreasurerFeeDashboardPageState
                         ),
                       ),
                       const SizedBox(width: 10),
+                      // Filter by tahun batch — compare dengan matric no
                       Expanded(
                         child: _DropdownBox(
                           hint: 'Batch',
@@ -433,7 +476,8 @@ class _TreasurerFeeDashboardPageState
                 ),
                 const SizedBox(height: 18),
 
-                // Status tabs
+                // Tab Status — Pending / Approved / Rejected 
+                // Klik tab untuk filter senarai ikut status
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -484,7 +528,7 @@ class _TreasurerFeeDashboardPageState
                 ),
                 const SizedBox(height: 10),
 
-                // Payment table
+                // Table Senarai Payment
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -496,12 +540,14 @@ class _TreasurerFeeDashboardPageState
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: _isLoading
+                        // Loading — tunjuk spinner
                         ? const Padding(
                             padding: EdgeInsets.all(30),
                             child: Center(
                                 child: CircularProgressIndicator()),
                           )
                         : payments.isEmpty
+                            // Kosong — tunjuk mesej tiada rekod
                             ? const Padding(
                                 padding: EdgeInsets.all(30),
                                 child: Center(
@@ -513,6 +559,7 @@ class _TreasurerFeeDashboardPageState
                               )
                             : Column(
                                 children: [
+                                  // Header table
                                   const Row(
                                     children: [
                                       Expanded(
@@ -559,6 +606,8 @@ class _TreasurerFeeDashboardPageState
                                   ),
                                   const SizedBox(height: 10),
                                   const Divider(height: 1),
+
+                                  // Generate row untuk setiap payment — limit 5 per page
                                   ...payments.take(5).map((item) {
                                     final status =
                                         (item['status'] ?? 'Pending')
@@ -570,6 +619,7 @@ class _TreasurerFeeDashboardPageState
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
+                                            // Matric no dan nama student
                                             Expanded(
                                               flex: 3,
                                               child: Column(
@@ -587,6 +637,7 @@ class _TreasurerFeeDashboardPageState
                                                   ),
                                                   const SizedBox(
                                                       height: 2),
+                                                  // Nama student dalam saiz kecik
                                                   Text(
                                                     item['name'] ?? '',
                                                     style:
@@ -598,6 +649,7 @@ class _TreasurerFeeDashboardPageState
                                                 ],
                                               ),
                                             ),
+                                            // Jumlah bayaran
                                             Expanded(
                                               flex: 2,
                                               child: Text(
@@ -606,6 +658,7 @@ class _TreasurerFeeDashboardPageState
                                                     fontSize: 16),
                                               ),
                                             ),
+                                            // Badge status
                                             Expanded(
                                               flex: 2,
                                               child: Container(
@@ -635,6 +688,7 @@ class _TreasurerFeeDashboardPageState
                                                 ),
                                               ),
                                             ),
+                                            // Butang View — navigate ke verify page
                                             Expanded(
                                               flex: 2,
                                               child: Align(
@@ -700,6 +754,7 @@ class _TreasurerFeeDashboardPageState
                 const SizedBox(height: 18),
 
                 // Pagination
+                // Tunjuk berapa rekod yang didisplay dari jumlah total
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -738,6 +793,7 @@ class _TreasurerFeeDashboardPageState
   }
 }
 
+// Chip kecik untuk tunjuk current semester kat dashboard.
 class _SemesterChip extends StatelessWidget {
   final String text;
 
@@ -763,6 +819,7 @@ class _SemesterChip extends StatelessWidget {
   }
 }
 
+/// Kad stat atas — tunjuk count besar (Pending/Approved/Rejected).
 class _TopStatCard extends StatelessWidget {
   final String value;
   final String label;
@@ -786,6 +843,7 @@ class _TopStatCard extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Nombor besar dengan warna ikut status
           Text(
             value,
             style: TextStyle(
@@ -805,6 +863,8 @@ class _TopStatCard extends StatelessWidget {
   }
 }
 
+// Dropdown box untuk filter — course and batch.
+// Wrapped dalam container dengan border untuk nampak konsisten.
 class _DropdownBox extends StatelessWidget {
   final String hint;
   final String? value;
@@ -848,6 +908,9 @@ class _DropdownBox extends StatelessWidget {
   }
 }
 
+// Tab status — Pending, Approved, Rejected.
+// Yang active ada underline dan teks bold.
+// Ada badge count kecik sebelah nama tab.
 class _StatusTab extends StatelessWidget {
   final String text;
   final String count;
@@ -880,6 +943,7 @@ class _StatusTab extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
+              // Badge count kecik sebelah nama 
               Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 6, vertical: 2),
@@ -898,6 +962,7 @@ class _StatusTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          // Underline indicator — only tunjuk untuk tab yang active
           if (active)
             Container(
               width: 95,
@@ -910,6 +975,8 @@ class _StatusTab extends StatelessWidget {
   }
 }
 
+/// Button pagination — Prev dan Next.
+/// Warna berbeza untuk distinguish antara dua-dua butang.
 class _PageButton extends StatelessWidget {
   final String text;
   final Color color;

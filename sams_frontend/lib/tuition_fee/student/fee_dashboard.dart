@@ -15,6 +15,7 @@ class FeeDashboardPage extends StatefulWidget {
 }
 
 class _FeeDashboardPageState extends State<FeeDashboardPage> {
+  // Data yuran yang difetch dari API
   Map<String, dynamic>? data;
   bool isLoading = true;
   String error = '';
@@ -23,9 +24,12 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
   @override
   void initState() {
     super.initState();
+    // Mula dengan load student ID dari local storage
     loadStudentId();
   }
 
+  // Ambik student ID yang dah save masa login.
+  // Kalau takde, suruh login balik.
   Future<void> loadStudentId() async {
     final prefs = await SharedPreferences.getInstance();
     final savedStudentId = prefs.getInt('student_id');
@@ -41,13 +45,17 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
     }
 
     studentId = savedStudentId;
+    // Terus fetch data yuran lepas dapat student ID
     await fetchFee();
   }
 
+  // Fetch status yuran student dari API Hostinger.
+  // Guna student ID untuk retrieve current semester info
   Future<void> fetchFee() async {
     try {
       final response = await http.get(
         Uri.parse(
+          // Untuk development local, uncomment line bawah:
           //'http://127.0.0.1:8000/api/tuition/student/$studentId/status',
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/$studentId/status',
         ),
@@ -71,6 +79,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
         });
       }
     } catch (e) {
+      // Kemungkinan no internet atau server down
       if (!mounted) return;
       setState(() {
         error = 'Unable to connect to server: $e';
@@ -79,6 +88,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
     }
   }
 
+  /// Return warna background badge status — hijau, oren, atau merah.
   Color getStatusBgColor(String status) {
     switch (status.toLowerCase()) {
       case 'paid':
@@ -91,6 +101,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
     }
   }
 
+  /// Return warna teks badge status.
   Color getStatusTextColor(String status) {
     switch (status.toLowerCase()) {
       case 'paid':
@@ -103,6 +114,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
     }
   }
 
+  /// Format angka kepada 2 decimal places untuk display duit
   String formatMoney(dynamic value) {
     final number = (value is num) ? value.toDouble() : double.tryParse(value.toString()) ?? 0.0;
     return number.toStringAsFixed(2);
@@ -118,6 +130,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
     const Color noticeBg = Color(0xFFF8EDBE);
     const Color noticeSide = Color(0xFFF39C12);
 
+    // Tunjuk loading spinner sambil tunggu data dari API
     if (isLoading) {
       return const Scaffold(
         backgroundColor: bgColor,
@@ -125,69 +138,72 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
       );
     }
 
+    // Kalau ada error, tunjuk mesej ringkas — jangan crash app
     if (error.isNotEmpty) {
-  return Scaffold(
-    backgroundColor: bgColor,
-    body: SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 92,
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              alignment: Alignment.centerLeft,
-              decoration: const BoxDecoration(
-                color: primaryColor,
-              ),
-              child: const Text(
-                'Tuition Fee Management',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Current Fee Status',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: borderColor),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  'Unable to load tuition fee information right now.',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 15,
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header sama je walaupun error
+                Container(
+                  height: 92,
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  alignment: Alignment.centerLeft,
+                  decoration: const BoxDecoration(
+                    color: primaryColor,
+                  ),
+                  child: const Text(
+                    'Tuition Fee Management',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 18),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Current Fee Status',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: borderColor),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Text(
+                      'Unable to load tuition fee information right now.',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
-    ),
-  );
-}
+      );
+    }
 
+    // Extract semua field dari API response — guna fallback kalau null
     final status = (data?['status'] ?? 'Unpaid').toString();
     final semester = (data?['semester'] ?? '-').toString();
     final totalFee = data?['total_fee'] ?? 0;
@@ -202,6 +218,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
       backgroundColor: bgColor,
       body: SafeArea(
         child: RefreshIndicator(
+          // Pull-to-refresh — student boleh refresh manual kalau nak
           onRefresh: fetchFee,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -209,6 +226,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+
+                //Header
                 Container(
                   height: 92,
                   width: double.infinity,
@@ -228,6 +247,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
                 const SizedBox(height: 18),
 
+                // Info Student
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -258,6 +278,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
 
                 const SizedBox(height: 20),
+
+                // Status Yuran Semasa
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
@@ -285,6 +307,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Nama semester di sebelah kiri
                             Expanded(
                               child: Text(
                                 semester,
@@ -294,6 +317,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                                 ),
                               ),
                             ),
+                            // Badge status — Paid / Partial / Unpaid
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 18,
@@ -315,6 +339,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                           ],
                         ),
                         const SizedBox(height: 14),
+
+                        // Jumlah keseluruhan yuran
                         Text(
                           'RM ${formatMoney(totalFee)}',
                           style: const TextStyle(
@@ -323,6 +349,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                           ),
                         ),
                         const SizedBox(height: 12),
+
+                        // Tarikh akhir bayaran
                         Text(
                           'Deadline: $deadline',
                           style: const TextStyle(
@@ -331,6 +359,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                           ),
                         ),
                         const SizedBox(height: 14),
+
+                        // Label progress bar
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -351,6 +381,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                           ],
                         ),
                         const SizedBox(height: 10),
+
+                        // Progress bar — tunjuk percentage bayaran yang dah dibayar
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: LinearProgressIndicator(
@@ -361,6 +393,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                           ),
                         ),
                         const SizedBox(height: 22),
+
+                        // fee details button
                         SizedBox(
                           width: double.infinity,
                           height: 48,
@@ -371,7 +405,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                                 MaterialPageRoute(
                                   builder: (_) => FeeDetailsPage(studentId: studentId!),
                                 ),
-                              ).then((_) => fetchFee());
+                              ).then((_) => fetchFee()); // Refresh lepas balik
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: primaryColor,
@@ -396,6 +430,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
 
                 const SizedBox(height: 20),
+
+                // payment summary
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
@@ -422,18 +458,21 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                     ),
                     child: Column(
                       children: [
+                        // Jumlah yuran penuh (total)
                         _SummaryRow(
                           label: 'Total Tuition Fee',
                           value: 'RM ${formatMoney(totalFee)}',
                           valueColor: Colors.black,
                         ),
                         const Divider(height: 1),
+                        // Berapa dah dibayar dan approved
                         _SummaryRow(
                           label: 'Amount Paid',
                           value: 'RM ${formatMoney(amountPaid)}',
                           valueColor: greenText,
                         ),
                         const Divider(height: 1),
+                        // Baki yang still perlu dibayar
                         _SummaryRow(
                           label: 'Remaining Balance',
                           value: 'RM ${formatMoney(remainingBalance)}',
@@ -445,6 +484,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
 
                 const SizedBox(height: 28),
+
+                // upload receipt button
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SizedBox(
@@ -460,7 +501,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                               studentId: studentId!,
                             ),
                           ),
-                        ).then((_) => fetchFee());
+                        ).then((_) => fetchFee()); // Refresh lepas upload
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryColor,
@@ -483,6 +524,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
 
                 const SizedBox(height: 16),
+
+                // history button
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SizedBox(
@@ -495,7 +538,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                           MaterialPageRoute(
                             builder: (_) => PaymentHistoryPage(studentId: studentId!),
                           ),
-                        ).then((_) => fetchFee());
+                        ).then((_) => fetchFee()); // Refresh lepas balik dari history
                       },
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: primaryColor, width: 2),
@@ -517,6 +560,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
 
                 const SizedBox(height: 18),
+
+                // Notification
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
@@ -529,6 +574,7 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
                 ),
                 const SizedBox(height: 10),
 
+                // Reminder kuning — ingatkan student pasal baki and deadline
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -561,6 +607,8 @@ class _FeeDashboardPageState extends State<FeeDashboardPage> {
   }
 }
 
+/// Widget helper untuk satu baris dalam Payment Summary.
+/// Tunjuk label kat kiri dan nilai berwarna kat kanan.
 class _SummaryRow extends StatelessWidget {
   final String label;
   final String value;

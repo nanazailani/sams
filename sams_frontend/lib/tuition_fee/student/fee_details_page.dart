@@ -18,6 +18,7 @@ class FeeDetailsPage extends StatefulWidget {
 }
 
 class _FeeDetailsPageState extends State<FeeDetailsPage> {
+  // Data detail yuran dari API
   Map<String, dynamic>? data;
   bool isLoading = true;
   String error = '';
@@ -25,13 +26,17 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
   @override
   void initState() {
     super.initState();
+    // Terus fetch masa page dibuka
     fetchFeeDetails();
   }
 
+  // Fetch breakdown detail yuran student dari API.
+  // more detail dari dashboard — ada tuition fee, hostel fee, outstanding.
   Future<void> fetchFeeDetails() async {
     try {
       final response = await http.get(
         Uri.parse(
+          // Untuk development local, uncomment line bawah:
           //'http://127.0.0.1:8000/api/tuition/student/${widget.studentId}/details',
           'https://darkgrey-lyrebird-505549.hostingersite.com/api/tuition/student/${widget.studentId}/details',
         ),
@@ -55,6 +60,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
         });
       }
     } catch (e) {
+      // Kemungkinan no internet atau server down
       if (!mounted) return;
       setState(() {
         error = 'Unable to connect to server: $e';
@@ -63,12 +69,14 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
     }
   }
 
+  /// Format angka kepada 2 decimal places untuk display duit.
   String formatMoney(dynamic value) {
     final number =
         (value is num) ? value.toDouble() : double.tryParse(value.toString()) ?? 0.0;
     return number.toStringAsFixed(2);
   }
 
+  /// Return warna background badge status pembayaran.
   Color getStatusBgColor(String status) {
     switch (status.toLowerCase()) {
       case 'paid':
@@ -81,6 +89,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
     }
   }
 
+  /// Return warna teks badge status ikut jenis pembayaran.
   Color getStatusTextColor(String status) {
     switch (status.toLowerCase()) {
       case 'paid':
@@ -101,6 +110,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
     const Color greenText = Color(0xFF00C853);
     const Color redText = Color(0xFFE53935);
 
+    // Tunjuk loading spinner sambil tunggu data
     if (isLoading) {
       return const Scaffold(
         backgroundColor: bgColor,
@@ -108,6 +118,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
       );
     }
 
+    // Kalau ada error, tunjuk mesej — jangan crash app
     if (error.isNotEmpty) {
       return Scaffold(
         backgroundColor: bgColor,
@@ -128,6 +139,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
       );
     }
 
+    // Extract semua field dari response — guna fallback kalau null
     final studentName = data?['student_name']?.toString() ?? '-';
     final matricNo = data?['matric_no']?.toString() ?? '-';
     final programme = data?['programme']?.toString() ?? '-';
@@ -146,6 +158,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
       backgroundColor: bgColor,
       body: SafeArea(
         child: RefreshIndicator(
+          // Pull-to-refresh untuk reload data terkini
           onRefresh: fetchFeeDetails,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -153,6 +166,8 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+
+                // Header dengan butang back 
                 Container(
                   height: 92,
                   width: double.infinity,
@@ -179,6 +194,9 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Info Student
+                // Tunjuk matric no, nama, semester, dan programme
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -206,6 +224,9 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // Breakdown Yuran
+                // Pecahan yuran: tuition fee + hostel fee = total
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
@@ -217,6 +238,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                   ),
                 ),
                 const SizedBox(height: 10),
+
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -228,6 +250,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                     ),
                     child: Column(
                       children: [
+                        // Header table
                         const Row(
                           children: [
                             Expanded(
@@ -251,16 +274,22 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                         const SizedBox(height: 10),
                         const Divider(height: 1),
                         const SizedBox(height: 12),
+
+                        // Yuran pengajian
                         _BreakdownRow(
                           label: 'Tuition Fee',
                           value: 'RM ${formatMoney(tuitionFee)}',
                         ),
                         const Divider(height: 18),
+
+                        // Yuran hostel — 0 kalau student tak duduk hostel
                         _BreakdownRow(
                           label: 'Hostel Fee',
                           value: 'RM ${formatMoney(hostelFee)}',
                         ),
                         const Divider(height: 18),
+
+                        // Jumlah keseluruhan — highlight dengan warna primary
                         _BreakdownRow(
                           label: 'Total',
                           value: 'RM ${formatMoney(totalFee)}',
@@ -272,6 +301,9 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
+
+                // payment status
+                // Tunjuk berapa dah bayar, outstanding, dan progress completion
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
@@ -283,6 +315,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                   ),
                 ),
                 const SizedBox(height: 10),
+
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -294,6 +327,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                     ),
                     child: Column(
                       children: [
+                        // Badge status — Paid / Partial / Unpaid
                         Row(
                           children: [
                             const Expanded(
@@ -322,18 +356,24 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                           ],
                         ),
                         const Divider(height: 24),
+
+                        // Jumlah yang dah dibayar dan approved
                         _BreakdownRow(
                           label: 'Paid',
                           value: 'RM ${formatMoney(paid)}',
                           valueColor: greenText,
                         ),
                         const Divider(height: 24),
+
+                        // Baki yang masih perlu dibayar
                         _BreakdownRow(
                           label: 'Outstanding',
                           value: 'RM ${formatMoney(outstanding)}',
                           valueColor: redText,
                         ),
                         const Divider(height: 24),
+
+                        // Peratus completion dan progress bar
                         Row(
                           children: [
                             const Expanded(
@@ -366,6 +406,8 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+
+                        // Tarikh akhir bayaran
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -381,6 +423,9 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
+
+                // upload receipt button
+                // Navigate ke upload page, lepas balik refresh data semula
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SizedBox(
@@ -396,7 +441,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
                               studentId: widget.studentId,
                             ),
                           ),
-                        ).then((_) => fetchFeeDetails());
+                        ).then((_) => fetchFeeDetails()); // Refresh lepas upload
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryColor,
@@ -426,6 +471,7 @@ class _FeeDetailsPageState extends State<FeeDetailsPage> {
   }
 }
 
+// Tunjuk label kat kiri dan nilai kat kanan dengan color yang dah customized.
 class _BreakdownRow extends StatelessWidget {
   final String label;
   final String value;
@@ -449,6 +495,7 @@ class _BreakdownRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               color: labelColor,
+              // Bold untuk row 'Total' je
               fontWeight: label == 'Total' ? FontWeight.w700 : FontWeight.w400,
             ),
           ),
